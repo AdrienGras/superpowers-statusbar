@@ -106,12 +106,17 @@ function doneBand(s: RunState, now: number): Segment[] {
 
 type Parts = { isElapsed: boolean; isTitle: boolean; isBar: boolean }
 
+function counterOf(s: RunState): number {
+  const done = s.tasks.filter(t => t.status === 'done').length
+  return Math.min(s.tasks.length, done + (currentTask(s) ? 1 : 0))
+}
+
 function execBand(s: RunState, now: number, parts: Parts): Segment[] {
   const total = s.tasks.length
   const done = s.tasks.filter(t => t.status === 'done').length
   const cur = currentTask(s)
   const filled = total ? Math.round((done / total) * BAR_CELLS) : 0
-  const counter = Math.min(total, done + (cur ? 1 : 0))
+  const counter = counterOf(s)
 
   const head: Segment[] = [
     { text: '●', tone: 'active' }, sep(' '),
@@ -171,14 +176,23 @@ function fitExecBand(s: RunState, now: number, columns: number): Segment[] {
   return band
 }
 
+function waitingBand(s: RunState, columns: number): Segment[] {
+  const badge = "T'ATTEND "
+  const message = waitText(s)
+  const room = columns - badge.length
+  const shown = message.length <= room ? message : `${message.slice(0, Math.max(0, room - 1))}…`
+  const out: Segment[] = [{ text: "T'ATTEND", tone: 'wait', isBold: true }, sep(' '), { text: shown, tone: 'wait' }]
+  const counter = `${counterOf(s)}/${s.tasks.length}`
+  if (s.stage === 'exec' && shown === message && badge.length + message.length + 3 + counter.length <= columns) {
+    out.push(sep(' · '), { text: counter, tone: 'normal', isBold: true })
+  }
+  return out
+}
+
 export function bandSegments(s: RunState, now: number, columns: number): Segment[] {
   if (s.stage === 'done') return doneBand(s, now)
-  const body = s.stage === 'exec' ? fitExecBand(s, now, columns) : simpleBand(s, now)
-  if (!s.waiting) return body
-  return [
-    { text: "T'ATTEND", tone: 'wait', isBold: true }, sep(' '),
-    { text: waitText(s), tone: 'wait' }, sep(' · '), ...body,
-  ]
+  if (s.waiting) return waitingBand(s, columns)
+  return s.stage === 'exec' ? fitExecBand(s, now, columns) : simpleBand(s, now)
 }
 
 // --- pane ---

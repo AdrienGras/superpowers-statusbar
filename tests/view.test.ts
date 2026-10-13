@@ -63,7 +63,30 @@ test("band leads with T'ATTEND and the wait text when waiting", () => {
   const s: RunState = { ...seven(), waiting: { reason: 'blocked', task: '7', since: 5 } }
   const segs = bandSegments(s, NOW, 200)
   expect(segs[0]).toEqual({ text: "T'ATTEND", tone: 'wait', isBold: true })
-  expect(text(segs).startsWith("T'ATTEND Task 7 bloquée")).toBe(true)
+  expect(text(segs)).toBe("T'ATTEND Task 7 bloquée · 7/15")
+})
+
+test('waiting plan band is the badge and the wait text only', () => {
+  const s: RunState = {
+    ...newRun('plan', 1000), tasks: Array.from({ length: 15 }, (_, k) => mkTask(k + 1)),
+    waiting: { reason: 'execution-choice', since: 5 },
+  }
+  expect(text(bandSegments(s, NOW, 200))).toBe("T'ATTEND plan prêt (15 tâches) · choisis le mode d'exécution")
+})
+
+test('waiting band truncates the wait text and omits the counter when narrow', () => {
+  const s: RunState = { ...seven(), waiting: { reason: 'blocked', task: '7', since: 5 } }
+  const full = "T'ATTEND Task 7 bloquée"
+  const noCounter = text(bandSegments(s, NOW, full.length + 3))
+  expect(noCounter).toBe(full)
+  const narrow = text(bandSegments(s, NOW, 20))
+  expect(narrow.length).toBeLessThanOrEqual(20)
+  expect(narrow.startsWith("T'ATTEND ")).toBe(true)
+  expect(narrow.endsWith('…')).toBe(true)
+  const plan: RunState = { ...newRun('plan', 1), waiting: { reason: 'execution-choice', since: 5 } }
+  const cut = text(bandSegments(plan, NOW, 25))
+  expect(cut.length).toBeLessThanOrEqual(25)
+  expect(cut.endsWith('…')).toBe(true)
 })
 
 test('band summarises a finished run', () => {
