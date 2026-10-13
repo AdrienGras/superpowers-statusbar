@@ -1,6 +1,6 @@
 import type { PluginOptions } from 'claude-code'
 
-import type { FileRequest, ObservedEvent, RunState, TraceEntry } from '../types'
+import type { FileRequest, ObservedEvent, RunState, Stage, TraceEntry } from '../types'
 import { detect } from '../src/detectors/index.ts'
 import { reduce } from '../src/reduce.ts'
 import { notificationFor } from '../src/notify.ts'
@@ -21,6 +21,8 @@ export type EnginePort = {
   /** Rejects when the file is missing. */
   readFile: (path: string) => Promise<string>
   writeFile: (path: string, text: string) => Promise<void>
+  /** Told, once the step is written, that the run entered `stage`; never awaited. */
+  entered: (stage: Stage) => void
 }
 
 /** What one event did to the run: the state before and after, a trace entry per action, the files to read. */
@@ -68,10 +70,10 @@ async function trace(port: EnginePort, entries: readonly TraceEntry[]) {
 const quietly = (work: Promise<unknown>) => work.then(() => {}, () => {})
 
 /**
- * Feeds one observed event to the run: detection and reduction on the stored state, a notification when the run
- * enters a wait worth one (and `options.notifications` is on), a trace line per action when `SP_STATUSBAR_TRACE`
- * names a file, then each file the detectors asked for, read through the engine and fed back as a `file` event
- * (a missing file is skipped). Never rejects.
+ * Feeds one observed event to the run: detection and reduction on the stored state, `port.entered` when the run
+ * changed stage, a notification when the run enters a wait worth one (and `options.notifications` is on), a trace
+ * line per action when `SP_STATUSBAR_TRACE` names a file, then each file the detectors asked for, read through the
+ * engine and fed back as a `file` event (a missing file is skipped). Never rejects.
  */
 export async function observe(port: EnginePort, e: ObservedEvent, options: PluginOptions): Promise<void> {
   let done: Step
@@ -79,6 +81,11 @@ export async function observe(port: EnginePort, e: ObservedEvent, options: Plugi
     done = await apply(port, e)
   } catch {
     return
+  }
+  if (done.next && done.next.stage !== done.prev?.stage) {
+    try {
+      port.entered(done.next.stage)
+    } catch {}
   }
   const text = notificationFor(done.prev, done.next)
   if (text !== undefined && options.notifications === true) await quietly(port.notify(text, { title: 'superpowers' }))

@@ -11,7 +11,9 @@ import type { EngineInterface, PluginOptions, Register } from 'claude-code'
 import type { ObservedEvent } from '../types'
 
 import { REPORT_TOOL } from '../src/instrument.ts'
+import { isDockingSurface, renderBand } from './band.tsx'
 import { callEvents, toolEvent } from './normalize.ts'
+import { PANE_ID, PANE_TITLE, renderPane } from './pane.tsx'
 import { observe } from './runtime.ts'
 import type { EnginePort } from './runtime.ts'
 
@@ -20,6 +22,9 @@ import type { EnginePort } from './runtime.ts'
  * state only through an atom or reference written in the file that hooks it, never one imported.
  */
 const runAtom = atom({ plugin: 'superpowers-statusbar', key: 'run' } as const, null)
+
+/** Whether the progress pane is open, as `/sp-progress`, the opening at exec and the person's close leave it. */
+const paneOpenAtom = atom({ plugin: 'superpowers-statusbar', key: 'isPaneOpen' } as const, false)
 
 const REPORT = 'mcp__superpowers-statusbar__report_phase'
 const REPORTED = { result: 'ok' } as const
@@ -33,7 +38,15 @@ function portOf($: EngineInterface): EnginePort {
     tracePath: () => $.env.get('SP_STATUSBAR_TRACE'),
     readFile: path => $.fs.read(path),
     writeFile: (path, text) => $.fs.write(path, text),
+    entered: stage => {
+      if (stage === 'exec' && isDockingSurface()) void openPane($).catch(() => {})
+    },
   }
+}
+
+async function openPane($: EngineInterface) {
+  await $.ui.open({ id: PANE_ID, title: PANE_TITLE })
+  await update($, paneOpenAtom, () => true)
 }
 
 /** Observes, in order, the events `events` builds for the current time; neither the clock nor observing fails the hook. */
@@ -55,6 +68,26 @@ export const register: Register = (on, options) => {
     ])
     return next(e)
   }).catch(($, e, next) => next(e))
+
+  on('command.run', { command: 'sp-progress' }, async $ => {
+    if (await read($, paneOpenAtom)) {
+      await $.ui.close({ id: PANE_ID })
+      await update($, paneOpenAtom, () => false)
+      return { text: 'Pane de progression fermé.' }
+    }
+    await openPane($)
+    return { text: 'Pane de progression ouvert.' }
+  })
+
+  on('ui.close', { id: PANE_ID }, async ($, e, next) => {
+    const closed = await next(e)
+    await update($, paneOpenAtom, () => false)
+    return closed
+  }).catch(($, e, next) => next(e))
+
+  on('ui.render', { component: 'AbovePrompt' }, renderBand).catch(($, e, next) => next(e))
+
+  on('ui.render', { component: 'Pane', requestId: PANE_ID }, renderPane)
 
   on('skill.prompt', async ($, e, next) => {
     await seen($, at => ({ kind: 'skill', skill: e.skill, at }), options)

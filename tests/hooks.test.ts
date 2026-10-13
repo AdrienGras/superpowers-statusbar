@@ -91,6 +91,7 @@ function port(stored: RunState | null, race?: (s: RunState | null) => RunState |
     tracePath: async () => undefined,
     readFile: async path => { throw new Error(`ENOENT: ${path}`) },
     writeFile: async () => {},
+    entered: () => {},
   }
   return { world, port: p }
 }

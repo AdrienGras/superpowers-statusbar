@@ -65,6 +65,6 @@ export type TraceEntry = { at: number; action: Action['type']; stage?: Stage; mo
 
 declare module 'claude-code' {
   interface PluginState {
-    'superpowers-statusbar': { run: RunState | null }
+    'superpowers-statusbar': { run: RunState | null; isPaneOpen: boolean }
   }
 }
