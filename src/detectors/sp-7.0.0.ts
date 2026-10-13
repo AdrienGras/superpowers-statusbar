@@ -104,6 +104,7 @@ function isKeepReport(answer: string): boolean {
 export function detect(e: ObservedEvent, s: RunState | null): Detection {
   switch (e.kind) {
     case 'skill': return skillUsed(e.skill, e.at, e.agentId)
+    case 'command': return skillUsed(e.command, e.at)
     case 'turn-start': return s ? only({ type: 'turn-started', at: e.at }) : none()
     case 'turn-end':
       if (!s) return none()

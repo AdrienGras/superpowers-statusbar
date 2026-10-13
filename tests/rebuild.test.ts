@@ -35,7 +35,7 @@ const start = ($: Engine) => $.session.start({ cwd: '/repo', surface: 'terminal'
 /** What a transcript holds of the events: one assistant message per tool call, `skill` events as `Skill` calls. */
 function transcriptOf(events: readonly ObservedEvent[]): TranscriptMessage[] {
   return events.flatMap((e): TranscriptMessage[] => {
-    if (e.kind === 'turn-start' || e.kind === 'turn-end' || e.kind === 'file' || e.kind === 'spawn') return []
+    if (e.kind === 'turn-start' || e.kind === 'turn-end' || e.kind === 'file' || e.kind === 'spawn' || e.kind === 'command') return []
     const { tool, input, ...outcome } = e.kind === 'skill'
       ? { tool: 'Skill', input: { skill: e.skill } }
       : e

@@ -50,6 +50,7 @@ export type LedgerLine =
   | { kind: 'ruling'; task?: string; text: string }
 export type ObservedEvent =
   | { kind: 'skill'; skill: string; agentId?: string; at: number }
+  | { kind: 'command'; command: string; at: number }
   | { kind: 'tool'; tool: string; input: Record<string, unknown>; text?: string; result?: unknown; isError?: boolean; agentId?: string; at: number }
   | { kind: 'spawn'; agentId: string; description: string; prompt: string; parentAgentId?: string; at: number }
   | { kind: 'turn-start'; at: number }

@@ -123,6 +123,12 @@ export const register: Register = (on, options) => {
     return { text: 'Progress pane opened.' }
   })
 
+  // A skill typed as `/superpowers:…` reaches `command.run`, not `skill.prompt`.
+  on('command.run', async ($, e, next) => {
+    if (e.command !== 'sp-progress') await seen($, at => ({ kind: 'command', command: e.command, at }), options)
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
   on('ui.close', { id: PANE_ID }, async ($, e, next) => {
     const closed = await next(e)
     await update($, paneOpenAtom, () => false)

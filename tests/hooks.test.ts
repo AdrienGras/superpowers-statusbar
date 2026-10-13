@@ -195,6 +195,24 @@ test('skill.prompt observes the skill and leaves its text alone', { plugins: [PE
   expect((await runOf($))?.stage).toBe('plan')
 })
 
+test('typing /superpowers:writing-plans enters plan and runs the command', { plugins: [PEEK] }, async ($, on) => {
+  engine(on)
+  on('command.run', () => ({ text: 'core' }))
+  const typed = (command: string) => ({ command, args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 160 } }) as const
+  const r = await $.command.run(typed('superpowers:writing-plans'))
+  expect(r.text).toBe('core')
+  expect((await runOf($))?.stage).toBe('plan')
+})
+
+test('/sp-progress still toggles the pane and starts no run', { plugins: [PEEK] }, async ($, on) => {
+  engine(on)
+  on('command.run', () => ({ text: 'core' }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  const r = await $.command.run({ command: 'sp-progress', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 160 } })
+  expect(r.text).not.toBe('core')
+  expect(await runOf($)).toBeNull()
+})
+
 test('report_phase calls are answered by the mod and update the run', { plugins: [PEEK] }, async ($, on) => {
   engine(on)
   const reached: string[] = []

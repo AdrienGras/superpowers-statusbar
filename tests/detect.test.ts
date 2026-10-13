@@ -43,6 +43,12 @@ test('detect maps each run skill to its stage', () => {
     .toEqual([{ type: 'stage-entered', stage: 'finishing', at }])
 })
 
+test('a slash command naming a run skill enters its stage', () => {
+  expect(detect({ kind: 'command', command: 'superpowers:brainstorming', at: AT }, null).actions)
+    .toEqual([{ type: 'stage-entered', stage: 'brainstorm', at: AT }])
+  expect(detect({ kind: 'command', command: 'compact', at: AT }, null)).toEqual(empty)
+})
+
 test('detect ignores skills outside the run chain', () => {
   expect(detect({ kind: 'skill', skill: 'superpowers:systematic-debugging', at: AT }, state('exec'))).toEqual(empty)
   expect(detect({ kind: 'skill', skill: 'other:brainstorming', at: AT }, null)).toEqual(empty)
