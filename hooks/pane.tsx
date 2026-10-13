@@ -78,6 +78,8 @@ export const renderPane: MatchedHook<'ui.render', { component: 'Pane', requestId
       <Text>{d.text}</Text>
     </Box>
   ))
+  // The latest decisions are shown: the earlier ones left out are counted above them.
+  if (m.hiddenDecisions > 0) decisions.unshift(<Text {...TONES.subtle}>{`(+${m.hiddenDecisions})`}</Text>)
   const eta = m.eta && (
     <Box flexDirection="row">
       {m.eta.split(' · ').flatMap((part, i) => [...(i > 0 ? [<Text {...TONES.subtle}> · </Text>] : []), <Text>{part}</Text>])}

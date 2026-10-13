@@ -22,7 +22,9 @@ export type PaneModel = {
   hiddenTasks: number
   /** The current task's phases passed (`done`), under way (`active`) and still expected (`todo`), in order. */
   current?: { n: string; title: string; trail: { label: string; status: Exclude<Mark, 'skipped'>; verdict?: string }[] }
+  /** The latest decisions, as many as the rows left allow (at least MIN_DECISION_ROWS); `hiddenDecisions` earlier ones. */
   decisions: RunState['decisions']
+  hiddenDecisions: number
   eta?: string
 }
 
@@ -32,6 +34,9 @@ const STAGES: readonly Stage[] = ['brainstorm', 'plan', 'exec', 'final-review', 
 /** Rows the pane spends beside the task list, before milestones and the current task's trail. */
 const PANE_CHROME_ROWS = 14
 const MIN_TASK_ROWS = 3
+/** Rows the decisions block spends beside its lines: the gap above it and its title. */
+const DECISION_CHROME_ROWS = 2
+const MIN_DECISION_ROWS = 3
 
 const REPORTED_LABELS: Record<ReportedPhase, string> = {
   conversation: 'conversation',
@@ -285,13 +290,36 @@ function currentOf(s: RunState, t: TaskState): NonNullable<PaneModel['current']>
   return { n: t.n, title: t.title, trail: [...passed, ...expected] }
 }
 
+/**
+ * The rows the decisions block takes at least: its title, MIN_DECISION_ROWS lines, and the `(+N)` line when there are
+ * more; none without decisions.
+ */
+function decisionReserve(count: number): number {
+  if (count === 0) return 0
+  return DECISION_CHROME_ROWS + Math.min(count, MIN_DECISION_ROWS) + (count > MIN_DECISION_ROWS ? 1 : 0)
+}
+
+/** How many of `count` decisions the `room` rows left show, keeping one for `(+N)` when some stay hidden. */
+function shownDecisions(count: number, room: number): number {
+  if (count <= Math.max(MIN_DECISION_ROWS, room)) return count
+  return Math.max(MIN_DECISION_ROWS, room - 1)
+}
+
+/**
+ * The pane's content for `rows` rows: the task list folds around the current task in the rows left once the
+ * decisions keep their least; the decisions then show their latest in what the tasks leave, so the estimate below
+ * stays in view.
+ */
 export function paneModel(s: RunState, now: number, rows: number): PaneModel {
   const cur = currentTask(s)
   const current = cur ? currentOf(s, cur) : undefined
   const stages = stagesOf(s)
   const curIndex = cur ? s.tasks.indexOf(cur) : Math.max(0, s.tasks.findIndex(t => t.status !== 'done'))
   const extraRows = stages.reduce((n, g) => n + g.milestones.length, 0) + (current?.trail.length ?? 0)
-  const { start, end } = visibleWindow(s.tasks.length, rows - PANE_CHROME_ROWS - extraRows, curIndex)
+  const free = rows - PANE_CHROME_ROWS - extraRows
+  const { start, end } = visibleWindow(s.tasks.length, free - decisionReserve(s.decisions.length), curIndex)
+  const decisionRoom = free - (end - start) - (s.decisions.length > 0 ? DECISION_CHROME_ROWS : 0)
+  const decisionCount = shownDecisions(s.decisions.length, decisionRoom)
   const est = estimate(s, now)
   const elapsed = elapsedOf(s, now)
   return {
@@ -304,7 +332,8 @@ export function paneModel(s: RunState, now: number, rows: number): PaneModel {
     })),
     hiddenTasks: s.tasks.length - (end - start),
     ...(current ? { current } : {}),
-    decisions: s.decisions,
+    decisions: s.decisions.slice(s.decisions.length - decisionCount),
+    hiddenDecisions: s.decisions.length - decisionCount,
     ...(est ? { eta: `avg ${formatDuration(est.avgMs)}/task · ~${formatDuration(est.remainingMs)} left · ETA ${formatClock(est.finishAt)}` } : {}),
   }
 }

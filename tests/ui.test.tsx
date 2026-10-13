@@ -40,17 +40,17 @@ const FILES: Record<string, readonly string[]> = {
  * list), tools answering what the replayed call printed, a pane host recording opens and closes, and a band of
  * the engine's own reading `engine`.
  */
-function engine(on: On) {
+function engine(on: On, files: Record<string, readonly string[]> = FILES) {
   const clock = mock.clock(on, { now: 1_000_000 })
   mock.env(on, {})
   const world = { answer: { result: 'ok' } as { result: unknown; text?: string }, opened: [] as string[], closed: [] as string[] }
   const reads = new Map<string, number>()
   on('fs.read', ($, e) => {
-    const path = Object.keys(FILES).find(p => e.path.endsWith(p))
+    const path = Object.keys(files).find(p => e.path.endsWith(p))
     if (!path) return { deny: `ENOENT: ${e.path}` }
     const n = reads.get(path) ?? 0
     reads.set(path, n + 1)
-    const versions = FILES[path]!
+    const versions = files[path]!
     return { value: versions[Math.min(n, versions.length - 1)]! }
   })
   on('tool.call', () => world.answer)
@@ -220,6 +220,23 @@ test('pane shows the five block titles for a run with decisions and an estimate'
     expect(await ui.find({ type: 'Text', text: 'Task 2 · Repository de recettes' })).toBeDefined()
     await ui.unmount()
   }
+})
+
+test('pane shows the last decisions that fit, the count of the others first, and keeps the estimate', async ($, on) => {
+  const many = LEDGER_TASK_1 + Array.from({ length: 12 }, (_, i) => `Ruling: decision ${i + 1} — why — cost\n`).join('')
+  const { clock, world } = engine(on, { ...FILES, [`${WORKSPACE}/progress.md`]: [LEDGER_FRESH, many] })
+  await replay($, clock, world, MID_TASK_2)
+  const ui = await $.ui.mount({
+    plugin: PLUGIN, surface: 'terminal', component: 'Pane', requestId: 'sp-progress', props: paneProps,
+    viewport: { ...DOCKED, rows: 30 },
+  })
+  const block = await ui.find({ type: 'Box', text: /^DECISIONS & SET ASIDE/ })
+  expect(block?.text).toMatch(/^DECISIONS & SET ASIDE\(\+\d+\)Ruling · decision \d+/)
+  expect(block?.text).toContain('decision 12')
+  expect(block?.text).not.toContain('decision 1 ')
+  expect(await ui.find({ type: 'Text', text: /^\(\+\d+\)$/ })).toMatchObject({ props: { color: 'subtle' } })
+  expect(await ui.find({ type: 'Text', text: 'ESTIMATE' })).toBeDefined()
+  await ui.unmount()
 })
 
 test('pane omits the blocks it has nothing for', async ($, on) => {

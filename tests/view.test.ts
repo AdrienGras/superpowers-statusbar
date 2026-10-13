@@ -276,3 +276,32 @@ test('paneModel marks any stage the run went past without entering as skipped, n
     ['final review', 'skipped'], ['finishing', 'active'], ['done', 'todo'],
   ])
 })
+
+test('paneModel shows the last decisions that fit the rows left, at least 3, and counts the rest', () => {
+  const decisions = Array.from({ length: 20 }, (_, i) => ({ kind: 'ruling' as const, text: `d${i + 1}` }))
+  const s: RunState = { ...execRun(1, 3), decisions }
+  // 40 rows: 14 of chrome, 4 for the current task's trail, 3 tasks, 2 for the decisions' title: 17 left, one for (+N).
+  const roomy = paneModel(s, NOW, 40)
+  expect(roomy.tasks).toHaveLength(3)
+  expect(roomy.decisions.map(d => d.text)).toEqual(decisions.slice(4).map(d => d.text))
+  expect(roomy.hiddenDecisions).toBe(4)
+  const tight = paneModel(s, NOW, 24)
+  expect(tight.decisions.map(d => d.text)).toEqual(['d18', 'd19', 'd20'])
+  expect(tight.hiddenDecisions).toBe(17)
+  const few = paneModel({ ...s, decisions: decisions.slice(0, 2) }, NOW, 24)
+  expect(few.decisions).toHaveLength(2)
+  expect(few.hiddenDecisions).toBe(0)
+})
+
+test('paneModel leaves the decisions room out of the task list', () => {
+  const decisions = Array.from({ length: 5 }, (_, i) => ({ kind: 'minor' as const, text: `d${i + 1}` }))
+  // 24 rows, 14 of chrome, a trail of 2: 8 task rows alone; the decisions keep their title, 3 lines and (+N).
+  const s: RunState = { ...execRun(7, 15, { trail: [{ phase: 'review', at: 1, verdict: 'ok' }] }), decisions }
+  expect(paneModel(s, NOW, 24).tasks).toHaveLength(3)
+  const mid = paneModel(s, NOW, 30)
+  expect(mid.tasks).toHaveLength(8)
+  expect([mid.decisions.length, mid.hiddenDecisions]).toEqual([3, 2])
+  const tall = paneModel(s, NOW, 40)
+  expect(tall.tasks).toHaveLength(15)
+  expect([tall.decisions.length, tall.hiddenDecisions]).toEqual([5, 0])
+})
