@@ -11,6 +11,7 @@ import type { EngineInterface, PluginOptions, Register } from 'claude-code'
 import type { ObservedEvent } from '../types'
 
 import { REPORT_TOOL } from '../src/instrument.ts'
+import { messagesToEvents } from '../src/rebuild.ts'
 import { isDockingSurface, renderBand } from './band.tsx'
 import { callEvents, toolEvent } from './normalize.ts'
 import { PANE_ID, PANE_TITLE, renderPane } from './pane.tsx'
@@ -82,12 +83,29 @@ async function seen($: EngineInterface, events: (at: number) => ObservedEvent | 
   for (const e of [events(at)].flat()) await observe(portOf($), e, options)
 }
 
+/**
+ * Rebuilds the run from the session transcript when the session starts with a transcript and no run (a resume).
+ * A run already stored (reload, compaction) is kept, and an empty transcript adopts nothing. The events go
+ * through `observe` as live ones do, files served by `$.fs.read`, but silently: no notification, trace or pane.
+ * Failing to read the transcript leaves the run as it is.
+ */
+async function rebuildFromTranscript($: EngineInterface, options: PluginOptions) {
+  try {
+    if ((await read($, runAtom)) !== null) return
+    const messages = await $.session.messages()
+    if (!Array.isArray(messages) || messages.length === 0) return
+    const port: EnginePort = { ...portOf($), tracePath: async () => undefined, entered: () => {} }
+    for (const e of messagesToEvents(messages)) await observe(port, e, { ...options, notifications: false })
+  } catch {}
+}
+
 export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     await Promise.all([
       $.tool.register(REPORT_TOOL),
       $.command.register({ name: 'sp-progress', description: 'Ouvre ou ferme le pane de progression superpowers' }),
     ])
+    await rebuildFromTranscript($, options)
     tickEveryMinute($)
     return next(e)
   }).catch(($, e, next) => next(e))

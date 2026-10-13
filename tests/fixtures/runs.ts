@@ -37,13 +37,18 @@ Task 2: minor (deferred): docblock incomplet
 Task 2: complete (commits e4f5a6b..0a1b2c3, review clean)
 `
 
+/** The ledger as the controller writes it right after task 1's review. */
+export const SDD_TASK1_LEDGER = `${LEDGER_HEADER}
+Task 1: complete (commits a1b2c3d..e4f5a6b, review clean)
+`
+
 /**
  * The plan, and the ledger as successive reads see it: header only when `sdd-workspace` runs
- * on a fresh plan, then the final ledger once the run writes it.
+ * on a fresh plan, then task 1 once the run writes it after its review, then the final ledger.
  */
 export const FILES: Record<string, string | readonly string[]> = {
   [PLAN]: PLAN_TEXT,
-  [`${WORKSPACE}/progress.md`]: [LEDGER_HEADER, SDD_RUN_LEDGER],
+  [`${WORKSPACE}/progress.md`]: [LEDGER_HEADER, SDD_TASK1_LEDGER, SDD_RUN_LEDGER],
 }
 
 /** Builds events with increasing timestamps, one minute apart. */
@@ -117,6 +122,7 @@ export const SDD_RUN: ObservedEvent[] = timeline(at => [
   turnEnd(at, '- **Status:** DONE\n- Commits: e4f5a6b feat: recette', 'impl-1'),
   turnStart(at),
   reviewer(at, 'rev-1', '1', 'Approved'),
+  write(at, `${WORKSPACE}/progress.md`, SDD_TASK1_LEDGER),
 
   bash(at, `bash ${SDD_SCRIPTS}/task-brief ${PLAN} 2`, `wrote ${WORKSPACE}/task-2-brief.md: 5 lines\n`),
   implementer(at, 'impl-2', '2', 'Repository de recettes'),
