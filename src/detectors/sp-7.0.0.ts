@@ -235,9 +235,10 @@ function roleOf(input: Record<string, unknown>, s: RunState): Role {
   if (first.startsWith("You are reviewing one task's implementation")) return { role: 'reviewer' }
   if (first.startsWith("You are re-reviewing one task's fix round")) return { role: 're-reviewer' }
   if (isFinalReviewTime && first.startsWith('You are a Senior Code Reviewer')) return { role: 'final-reviewer' }
-  // Real runs also word the final review their own way: any review once every task is done.
+  // Real runs also word the final review their own way, in English or French: any review once every task is
+  // done, except the dispatch that fixes its findings.
   const isAfterTasks = s.stage === 'final-review' || (s.stage === 'exec' && s.tasks.length > 0 && s.tasks.every(t => t.status === 'done'))
-  if (isAfterTasks && /review/i.test(description)) return { role: 'final-reviewer' }
+  if (isAfterTasks && /review|revue/i.test(description) && !/\bfix|correct/i.test(description)) return { role: 'final-reviewer' }
   return { role: 'other' }
 }
 
