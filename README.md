@@ -44,7 +44,7 @@ Checks:
 
 ```
 claude plugin test .
-npx tsc -p .
+npm run typecheck
 claude plugin validate .
 ```
 
