@@ -1,4 +1,4 @@
-import type { ReportedPhase, RunState, Stage, TaskEvent, TaskPhase, TaskState } from '../types'
+import type { ReportedPhase, RunState, Stage, TaskEvent, TaskPhase, TaskState, Waiting } from '../types'
 import { currentTask } from './reduce.ts'
 import { waitText } from './notify.ts'
 
@@ -99,7 +99,7 @@ export function estimate(s: RunState, now: number): { avgMs: number; remainingMs
   const spans = s.tasks.flatMap(t =>
     t.status === 'done' && t.startedAt && t.doneAt ? [t.doneAt - t.startedAt] : [])
   const remaining = s.tasks.filter(t => t.status !== 'done').length
-  if (spans.length === 0 || remaining === 0) return undefined
+  if (!s.isPlanLoaded || spans.length === 0 || remaining === 0) return undefined
   const avgMs = spans.reduce((a, b) => a + b, 0) / spans.length
   const remainingMs = avgMs * remaining
   return { avgMs, remainingMs, finishAt: now + remainingMs }
@@ -166,20 +166,33 @@ function execBand(s: RunState, now: number, parts: Parts): Segment[] {
   return [...head, ...bar, ...tail, ...more.flatMap(m => [sep(' · '), ...m])]
 }
 
-function simpleBand(s: RunState, now: number): Segment[] {
-  const out: Segment[] = [RUNNING, sep(' '), { text: stageLabel(s), tone: 'normal' }]
-  let phase: string | undefined
-  if (s.stagePhase) phase = REPORTED_LABELS[s.stagePhase]
-  else if (s.stage === 'plan' && s.tasks.length > 0) phase = `${s.tasks.length} tasks`
-  if (phase) out.push(sep(' · '), { text: phase, tone: 'normal' })
-  if (s.stage !== 'brainstorm' && s.stage !== 'plan') {
-    const elapsed = elapsedOf(s, now)
-    if (elapsed) out.push(sep(' · '), { text: elapsed, tone: 'subtle' })
-  }
-  return out
-}
+/** The band's wording of a reported phase: the pane's, but the plan's self-review reads `self-review` there. */
+const BAND_LABELS: Record<ReportedPhase, string> = { ...REPORTED_LABELS, 'self-review': 'self-review' }
 
 const length = (segs: Segment[]) => segs.reduce((n, g) => n + g.text.length, 0)
+
+/** The part of the band after the stage: the plan's task count then the reported phase, brainstorm's phase. */
+function phaseOf(s: RunState): string | undefined {
+  const parts = [
+    ...(s.stage === 'plan' && s.tasks.length > 0 ? [`${s.tasks.length} tasks`] : []),
+    ...(s.stagePhase ? [BAND_LABELS[s.stagePhase]] : []),
+  ]
+  return parts.length > 0 ? parts.join(' · ') : undefined
+}
+
+/** Stage, phase, elapsed time; the elapsed time goes first, then the phase, when the line is longer than `columns`. */
+function simpleBand(s: RunState, now: number, columns: number): Segment[] {
+  const phase = phaseOf(s)
+  const elapsed = s.stage !== 'brainstorm' && s.stage !== 'plan' ? elapsedOf(s, now) : undefined
+  let band: Segment[] = []
+  for (const parts of [{ isPhase: true, isElapsed: true }, { isPhase: true, isElapsed: false }, { isPhase: false, isElapsed: false }]) {
+    band = [RUNNING, sep(' '), { text: stageLabel(s), tone: 'normal' }]
+    if (phase && parts.isPhase) band.push(sep(' · '), { text: phase, tone: 'normal' })
+    if (elapsed && parts.isElapsed) band.push(sep(' · '), { text: elapsed, tone: 'subtle' })
+    if (length(band) <= columns) break
+  }
+  return band
+}
 
 /** Drops, in order: elapsed time, task title, bar. Marker, stage and counter always stay. */
 function fitExecBand(s: RunState, now: number, columns: number): Segment[] {
@@ -197,6 +210,16 @@ function fitExecBand(s: RunState, now: number, columns: number): Segment[] {
   return band
 }
 
+/** `segs` cut to `columns` cells. */
+function cutTo(segs: Segment[], columns: number): Segment[] {
+  let left = Math.max(0, columns)
+  return segs.flatMap(g => {
+    const text = g.text.slice(0, left)
+    left -= text.length
+    return text ? [{ ...g, text }] : []
+  })
+}
+
 /** The waiting block's text around the reason: ` WAITING · <reason> `, all of it highlighted. */
 const WAIT_BADGE = 'WAITING'
 const WAIT_CHROME = ` ${WAIT_BADGE} ·  `.length
@@ -205,10 +228,13 @@ const WAIT_CHROME = ` ${WAIT_BADGE} ·  `.length
  * One highlighted block, ` WAITING · <reason> `, its spaces included, the reason cut with `…` to fit; in exec, the
  * counter follows outside the block when the whole reason and the counter fit.
  */
-function waitingBand(s: RunState, columns: number): Segment[] {
-  const message = waitText(s)
+function waitingBand(s: RunState, w: Waiting, columns: number): Segment[] {
+  const message = waitText(s, w)
   const room = columns - WAIT_CHROME
-  const shown = message.length <= room ? message : `${message.slice(0, Math.max(0, room - 1))}…`
+  if (room < 1) return cutTo([
+    { text: ' ', tone: 'wait' }, { text: WAIT_BADGE, tone: 'wait', isBold: true }, { text: ` · ${message} `, tone: 'wait' },
+  ], columns)
+  const shown = message.length <= room ? message : `${message.slice(0, room - 1)}…`
   const out: Segment[] = [
     { text: ' ', tone: 'wait' },
     { text: WAIT_BADGE, tone: 'wait', isBold: true },
@@ -223,8 +249,8 @@ function waitingBand(s: RunState, columns: number): Segment[] {
 
 export function bandSegments(s: RunState, now: number, columns: number): Segment[] {
   if (s.stage === 'done') return doneBand(s, now)
-  if (s.waiting) return waitingBand(s, columns)
-  return s.stage === 'exec' ? fitExecBand(s, now, columns) : simpleBand(s, now)
+  if (s.waiting) return waitingBand(s, s.waiting, columns)
+  return s.stage === 'exec' ? fitExecBand(s, now, columns) : simpleBand(s, now, columns)
 }
 
 // --- pane ---

@@ -1,11 +1,9 @@
-import type { RunState, WaitReason } from '../types'
+import type { RunState, WaitReason, Waiting } from '../types'
 
 const NOTIFIED: ReadonlySet<WaitReason> = new Set<WaitReason>(['execution-choice', 'blocked', 'breaker', 'finishing-menu'])
 
-/** The status-bar text for the current wait, empty when the run is not waiting. */
-export function waitText(s: RunState): string {
-  const w = s.waiting
-  if (!w) return ''
+/** The status-bar text for the wait `w` the run `s` is in. */
+export function waitText(s: RunState, w: Waiting): string {
   switch (w.reason) {
     case 'brainstorm-question': return 'question for you'
     case 'spec-approval': return 'review the spec'
@@ -22,5 +20,5 @@ export function notificationFor(prev: RunState | null, next: RunState | null): s
   const w = next?.waiting
   if (!next || !w || !NOTIFIED.has(w.reason)) return undefined
   const before = prev?.waiting
-  return !before || before.reason !== w.reason || before.since !== w.since ? waitText(next) : undefined
+  return !before || before.reason !== w.reason || before.since !== w.since ? waitText(next, w) : undefined
 }

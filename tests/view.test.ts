@@ -305,3 +305,44 @@ test('paneModel leaves the decisions room out of the task list', () => {
   expect(tall.tasks).toHaveLength(15)
   expect([tall.decisions.length, tall.hiddenDecisions]).toEqual([5, 0])
 })
+
+test('estimate is undefined until a plan is loaded', () => {
+  const s = execRun(1, 2)
+  const { isPlanLoaded: _loaded, ...unplanned } = s
+  expect(estimate(unplanned, NOW)).toBeUndefined()
+  expect(paneModel(unplanned, NOW, 40).eta).toBeUndefined()
+  expect(estimate(s, NOW)).toBeDefined()
+  expect(paneModel(s, NOW, 40).eta).toBeDefined()
+})
+
+test('final-review and finishing bands drop the elapsed time when narrow', () => {
+  for (const stage of ['final-review', 'finishing'] as const) {
+    const s: RunState = { ...newRun(stage, 1000), startedAt: 1000 }
+    const wide = text(bandSegments(s, NOW, 200))
+    expect(wide).toContain('42m')
+    const narrow = text(bandSegments(s, NOW, wide.length - 1))
+    expect(narrow).not.toContain('42m')
+    expect(narrow.length).toBeLessThanOrEqual(wide.length - 1)
+  }
+})
+
+test('no band is wider than its columns', () => {
+  const s: RunState = { ...execRun(1, 3), waiting: { reason: 'blocked', task: '2', since: 5 } }
+  for (let columns = 1; columns <= 12; columns++) {
+    expect(text(bandSegments(s, NOW, columns)).length).toBeLessThanOrEqual(columns)
+  }
+})
+
+test('the plan band shows the task count then the reported phase', () => {
+  const tasks = Array.from({ length: 12 }, (_, k) => mkTask(k + 1))
+  const s: RunState = { ...newRun('plan', 1000), tasks, stagePhase: 'self-review' }
+  expect(text(bandSegments(s, NOW, 200))).toBe('● plan · 12 tasks · self-review')
+  expect(text(bandSegments({ ...s, stagePhase: undefined }, NOW, 200))).toBe('● plan · 12 tasks')
+  expect(text(bandSegments({ ...newRun('plan', 1000), stagePhase: 'drafting' }, NOW, 200))).toBe('● plan · drafting')
+})
+
+test('the pane keeps plan self-review as the plan stage detail', () => {
+  const tasks = Array.from({ length: 12 }, (_, k) => mkTask(k + 1))
+  const s: RunState = { ...newRun('plan', 1000), tasks, stagePhase: 'self-review' }
+  expect(paneModel(s, NOW, 40).stages[1]?.detail).toBe('plan self-review')
+})

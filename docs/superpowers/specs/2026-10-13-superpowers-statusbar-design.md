@@ -68,7 +68,7 @@ Phases d'une tâche :
 - **SDD** : `brief` → `implementing` → `review` → `fix r/5` → `re-review r` → `done`.
 - **Exécution directe** (`exec inline`) : `brief` → `RED` → `GREEN` → `refactor` → `verify` (le `task-done`) → `done`.
 
-Avant l'exécution, la même ligne s'adapte : `● brainstorming · conversation`, `● brainstorming · builder check`, `● plan · drafting`, `● plan · 15 tasks`. Après : `● final review`, `● final review · fixes`, puis un état terminé avec un résumé : `✓ done · 15 tasks · 4 fix rounds · 2 set aside · 3h12`.
+Avant l'exécution, la même ligne s'adapte : `● brainstorming · conversation`, `● brainstorming · builder check`, `● plan · drafting`, `● plan · 15 tasks`. *(v0.1.1)* Sous plan, la bande donne le nombre de tâches puis la phase rapportée (`● plan · 12 tasks · self-review`) ; la bande dit `self-review`, le pane garde `plan self-review`. Après : `● final review`, `● final review · fixes`, puis un état terminé avec un résumé : `✓ done · 15 tasks · 4 fix rounds · 2 set aside · 3h12`.
 
 Quand le run attend Adrien, la ligne devient un seul bloc surligné (fond `warning`, texte `inverseText`, espaces compris), avec la raison ; en exécution, le compteur suit hors du bloc si la place le permet :
 
@@ -81,7 +81,7 @@ Raisons attendues : question du brainstorming (`question for you`), validation d
 
 Hors run superpowers, la bande n'affiche rien (le hook rend `next(e)`).
 
-La bande se dimensionne sur `e.props.bodyColumns` : quand la place manque, elle retire d'abord le temps écoulé, puis le titre de la tâche, puis la barre (le compteur reste). En attente, la raison se coupe avec `…` dans le bloc.
+La bande se dimensionne sur `e.props.bodyColumns` : quand la place manque, elle retire d'abord le temps écoulé, puis le titre de la tâche, puis la barre (le compteur reste). En attente, la raison se coupe avec `…` dans le bloc. *(v0.1.1)* Toutes les bandes tiennent dans `bodyColumns` : brainstorming, plan, revue finale et fin de branche retirent d'abord le temps écoulé puis la phase ; en attente, sous la largeur du bloc (` WAITING · `), le bloc entier est coupé à la largeur, sans jamais la dépasser.
 
 ## Le pane latéral
 
@@ -91,7 +91,7 @@ Il raconte le run. Blocs retenus par Adrien, de haut en bas (titres `STAGES`, `T
 2. **Tâches** : une ligne par tâche, mêmes marques et couleurs, titre, durée alignée à droite pour une tâche finie, nombre de fix rounds. Si la liste dépasse la hauteur, la tâche en cours et ses voisines restent visibles (au moins 3 lignes) et le reste se replie en `(+N)`.
 3. **Tâche en cours** : ses phases en liste verticale, une par ligne : `✓` pour les phases passées avec leur verdict (`ok`, `needs fixes`, `open`…), le spinner pour la phase en cours, `○` pour les phases encore attendues (SDD : brief → implementing → review → done, les fix et re-review s'insèrent au fil de l'eau ; exécution directe : brief → RED → GREEN → refactor → verify → done).
 4. **Décisions et points mis de côté** : rulings, minors différés, findings parkés, tirés du ledger. *(Décidé pendant l'implémentation)* : seules les dernières qui tiennent dans la hauteur restante s'affichent (au moins 3), les plus anciennes comptées en `(+N)` au-dessus ; ces lignes entrent dans le budget de hauteur pour que l'estimation reste visible.
-5. **Estimation** : temps moyen par tâche terminée, temps restant, heure de fin probable (`avg 6m/task · ~48m left · ETA 17:40`).
+5. **Estimation** : temps moyen par tâche terminée, temps restant, heure de fin probable (`avg 6m/task · ~48m left · ETA 17:40`). *(v0.1.1)* Pas d'estimation tant qu'aucun plan n'a été lu : sans plan, le nombre de tâches restantes est inconnu, donc le bloc n'est pas affiché.
 
 Quand le run attend Adrien, rien ne tourne dans le pane : les marques « en cours » deviennent un `●` fixe en `warning` *(décidé pendant l'implémentation)*. Le temps écoulé et l'estimation avancent par une minuterie d'une minute tant qu'un run est en cours.
 
