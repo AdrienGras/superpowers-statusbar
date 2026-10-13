@@ -48,7 +48,7 @@ test('stage-entered exec on a null state starts a run at exec with mode', () => 
   const s = reduce(null, { type: 'stage-entered', stage: 'exec', mode: 'direct', at: 5 })
   expect(must(s).stage).toBe('exec')
   expect(must(s).mode).toBe('direct')
-  expect(must(s).milestones).toEqual([{ stage: 'exec', label: 'exec direct', at: 5 }])
+  expect(must(s).milestones).toEqual([{ stage: 'exec', label: 'exec inline', at: 5 }])
   expect(newRun('plan', 7)).toEqual({
     id: 'run-7', startedAt: 7, stage: 'plan', tasks: [], milestones: [], agents: {}, decisions: [],
   })
@@ -78,14 +78,14 @@ test('brainstorm milestones and phases', () => {
   expect(must(s).stagePhase).toBe('awaiting-approval')
   expect(must(s).specPath).toBe('/p/specs/x-design.md')
   expect(must(s).milestones).toEqual([
-    { stage: 'brainstorm', label: 'spec écrite', at: 3 },
+    { stage: 'brainstorm', label: 'spec written', at: 3 },
     { stage: 'brainstorm', label: 'builder check', at: 4 },
-    { stage: 'brainstorm', label: 'spec à valider', at: 5 },
+    { stage: 'brainstorm', label: 'spec awaiting approval', at: 5 },
   ])
   const p = reduce(s, PLAN)
   expect(must(p).stage).toBe('plan')
   expect(must(p).planPath).toBe('/p/plan.md')
-  expect(must(p).milestones).toContainEqual({ stage: 'plan', label: '2 tâches · 5 étapes', at: 20 })
+  expect(must(p).milestones).toContainEqual({ stage: 'plan', label: '2 tasks · 5 steps', at: 20 })
 })
 
 test('plan-loaded replaces tasks and keeps done ones', () => {
@@ -104,7 +104,7 @@ test('plan-loaded replaces tasks and keeps done ones', () => {
   expect(task(s, '2').title).toBe('Repository v2')
   expect(task(s, '2').startedAt).toBe(41)
   expect(task(s, '3')).toEqual({ n: '3', title: 'Vue', steps: 1, status: 'todo', fixRounds: 0, trail: [] })
-  expect(must(s).milestones.filter(m => m.stage === 'plan')).toEqual([{ stage: 'plan', label: '3 tâches · 8 étapes', at: 50 }])
+  expect(must(s).milestones.filter(m => m.stage === 'plan')).toEqual([{ stage: 'plan', label: '3 tasks · 8 steps', at: 50 }])
 })
 
 test('task-started adds a task missing from the plan', () => {
@@ -133,7 +133,7 @@ test('sdd task flows through writing, review, fix and re-review', () => {
   expect(t.lastStatus).toBe('DONE')
   expect(t.implementerId).toBe('a1')
   expect(t.trail.map(e => e.phase)).toEqual(['brief', 'writing', 'review', 'fix', 're-review', 'done'])
-  expect(t.trail[2]!.verdict).toBe('à corriger')
+  expect(t.trail[2]!.verdict).toBe('needs fixes')
   expect(t.trail[3]!.round).toBe(1)
   expect(t.trail[4]).toEqual({ phase: 're-review', at: 36, round: 1, verdict: 'ok' })
   expect(must(s).agents['a1']!.isRunning).toBe(true)
@@ -208,9 +208,9 @@ test('final review not clean in direct mode moves to fixes', () => {
   expect(must(s).stage).toBe('final-review')
   expect(must(s).finalReview).toEqual({ phase: 'review' })
   const r = reduce(s, { type: 'agent-reported', agentId: 'f1', answer: '**Ready to merge?** With fixes', at: 61 })
-  expect(must(r).finalReview).toEqual({ phase: 'fixes', verdict: 'avec corrections' })
+  expect(must(r).finalReview).toEqual({ phase: 'fixes', verdict: 'with fixes' })
   const done = reduce(r, { type: 'workspace-removed', at: 70 })
-  expect(must(done).finalReview).toEqual({ phase: 'done', verdict: 'avec corrections' })
+  expect(must(done).finalReview).toEqual({ phase: 'done', verdict: 'with fixes' })
 })
 
 test('final review not clean in sdd mode moves to fixes when a fixer is dispatched', () => {
@@ -218,7 +218,7 @@ test('final review not clean in sdd mode moves to fixes when a fixer is dispatch
     { type: 'agent-dispatched', agentId: 'f1', role: 'final-reviewer', isRunning: false, at: 60 },
     { type: 'agent-reported', agentId: 'f1', answer: '**Ready to merge: With fixes**', at: 61 },
   ])
-  expect(must(s).finalReview).toEqual({ phase: 'review', verdict: 'avec corrections' })
+  expect(must(s).finalReview).toEqual({ phase: 'review', verdict: 'with fixes' })
   const f = reduce(s, { type: 'agent-dispatched', agentId: 'o1', role: 'other', isRunning: true, at: 62 })
   expect(must(f).finalReview!.phase).toBe('fixes')
 })
@@ -228,7 +228,7 @@ test('clean final review is done', () => {
     { type: 'agent-dispatched', agentId: 'f1', role: 'final-reviewer', isRunning: true, at: 60 },
     { type: 'agent-reported', agentId: 'f1', answer: '**Ready to merge?** Yes', at: 61 },
   ])
-  expect(must(s).finalReview).toEqual({ phase: 'done', verdict: 'prêt' })
+  expect(must(s).finalReview).toEqual({ phase: 'done', verdict: 'ready' })
   expect(must(s).agents['f1']!.isRunning).toBe(false)
 })
 
@@ -262,7 +262,7 @@ test('tdd phases without agent land on the current task, verify closes it', () =
   const t = task(s, '1')
   expect(t.trail).toEqual([
     { phase: 'brief', at: 30 }, { phase: 'red', at: 31 }, { phase: 'green', at: 32 }, { phase: 'refactor', at: 33 },
-    { phase: 'verify', at: 34, verdict: 'échec' }, { phase: 'verify', at: 35 }, { phase: 'done', at: 35 },
+    { phase: 'verify', at: 34, verdict: 'failed' }, { phase: 'verify', at: 35 }, { phase: 'done', at: 35 },
   ])
   expect(t.status).toBe('done')
   expect(t.doneAt).toBe(35)
@@ -333,13 +333,13 @@ test('reduce never mutates its input', () => {
 test('parseReport reads each report format', () => {
   expect(parseReport('implementer', 'x\n- **Status:** DONE_WITH_CONCERNS\n')).toEqual({ status: 'DONE_WITH_CONCERNS' })
   expect(parseReport('reviewer', '**Task quality:** Approved')).toEqual({ verdict: 'ok', isClean: true })
-  expect(parseReport('reviewer', '**Task quality:** Needs fixes')).toEqual({ verdict: 'à corriger', isClean: false })
-  expect(parseReport('reviewer', 'Spec: ❌ missing\n**Task quality:** Approved')).toEqual({ verdict: 'à corriger', isClean: false })
+  expect(parseReport('reviewer', '**Task quality:** Needs fixes')).toEqual({ verdict: 'needs fixes', isClean: false })
+  expect(parseReport('reviewer', 'Spec: ❌ missing\n**Task quality:** Approved')).toEqual({ verdict: 'needs fixes', isClean: false })
   expect(parseReport('re-reviewer', '**Fix round:** All findings addressed, no new Critical/Important breakage')).toEqual({ verdict: 'ok', isClean: true })
-  expect(parseReport('re-reviewer', '**Fix round:** Findings remain open — x')).toEqual({ verdict: 'ouvert', isClean: false })
-  expect(parseReport('final-reviewer', '**Ready to merge?** Yes')).toEqual({ verdict: 'prêt', isClean: true })
-  expect(parseReport('final-reviewer', '**Ready to merge?** With fixes')).toEqual({ verdict: 'avec corrections', isClean: false })
-  expect(parseReport('final-reviewer', '**Ready to merge?** No')).toEqual({ verdict: 'non', isClean: false })
+  expect(parseReport('re-reviewer', '**Fix round:** Findings remain open — x')).toEqual({ verdict: 'open', isClean: false })
+  expect(parseReport('final-reviewer', '**Ready to merge?** Yes')).toEqual({ verdict: 'ready', isClean: true })
+  expect(parseReport('final-reviewer', '**Ready to merge?** With fixes')).toEqual({ verdict: 'with fixes', isClean: false })
+  expect(parseReport('final-reviewer', '**Ready to merge?** No')).toEqual({ verdict: 'no', isClean: false })
   expect(parseReport('implementer', 'nothing here')).toEqual({})
   expect(parseReport('other', '**Status:** DONE')).toEqual({})
 })

@@ -13,7 +13,7 @@ import { PLAN, PLAN_TEXT, WORKSPACE } from './fixtures/runs.ts'
 const REPORT = 'mcp__superpowers-statusbar__report_phase'
 const SCRIPTS = '/home/dev/.claude/plugins/cache/superpowers-marketplace/superpowers/7.0.0/skills/subagent-driven-development/scripts'
 const SKILL_TEXT = '# A skill\n\nDo the thing.\n'
-const PLAN_READY = 'plan prêt (2 tâches) · choisis le mode d\'exécution'
+const PLAN_READY = 'plan ready (2 tasks) · pick an execution mode'
 
 /** Answers `mcp__peek__run` with the mod's run, read the way any plugin reads another's state. */
 const PEEK: Plugin = {
@@ -127,7 +127,7 @@ test('session.start registers the report tool and the command', async ($, on) =>
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
   expect(tools).toEqual([REPORT_TOOL])
-  expect(commands).toEqual([{ name: 'sp-progress', description: 'Ouvre ou ferme le pane de progression superpowers' }])
+  expect(commands).toEqual([{ name: 'sp-progress', description: 'Open or close the superpowers progress pane' }])
 })
 
 test('skill.prompt observes the skill and leaves its text alone', { plugins: [PEEK] }, async ($, on) => {

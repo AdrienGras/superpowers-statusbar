@@ -138,17 +138,17 @@ test('band draws the running line', async ($, on) => {
 test('band and pane move their elapsed time on every minute while the run is quiet', async ($, on) => {
   const { clock, world } = engine(on)
   await replay($, clock, world, MID_TASK_2)
-  const elapsed = /^\d+ min$/
+  const elapsed = /^\d+m$/
   const band = await mountBand($, 'terminal')
   const pane = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'Pane', requestId: 'sp-progress', props: paneProps, viewport: DOCKED })
   const before = (await band.find({ type: 'Text', text: elapsed }))?.text
-  const eta = (await pane.find({ type: 'Text', text: /^moy\./ }))?.text
+  const eta = (await pane.find({ type: 'Text', text: /^avg / }))?.text
   expect(before).toBeDefined()
   await clock.advance(20 * 60_000)
   const after = (await band.find({ type: 'Text', text: elapsed }))?.text
   expect(after).toBeDefined()
   expect(after).not.toBe(before)
-  expect((await pane.find({ type: 'Text', text: /^moy\./ }))?.text).not.toBe(eta)
+  expect((await pane.find({ type: 'Text', text: /^avg / }))?.text).not.toBe(eta)
   await band.unmount()
   await pane.unmount()
 })
@@ -158,7 +158,7 @@ test('band draws T\'ATTEND when waiting', async ($, on) => {
   await replay($, clock, world, PLAN_READY)
   for (const surface of SURFACES) {
     const ui = await mountBand($, surface)
-    expect(await ui.find({ type: 'Text', text: "T'ATTEND" })).toMatchObject({ props: { bold: true, color: 'black' } })
+    expect(await ui.find({ type: 'Text', text: 'WAITING' })).toMatchObject({ props: { bold: true, color: 'black' } })
     await ui.unmount()
   }
 })
@@ -171,7 +171,7 @@ test('band yields to a survey and to the surfaces it does not draw on', async ($
   await survey.unmount()
   for (const surface of ['vscode', 'mobile'] as const) {
     const ui = await mountBand($, surface)
-    expect(await ui.find({ type: 'Text', text: "T'ATTEND" })).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: 'WAITING' })).toBeUndefined()
     await ui.unmount()
   }
 })
@@ -181,11 +181,11 @@ test('pane shows the five block titles for a run with decisions and an estimate'
   await replay($, clock, world, MID_TASK_2)
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'Pane', requestId: 'sp-progress', props: paneProps, viewport: DOCKED })
-    for (const title of ['ÉTAPES', 'TÂCHES', 'TÂCHE EN COURS', 'DÉCISIONS & MIS DE CÔTÉ', 'ESTIMATION']) {
+    for (const title of ['STAGES', 'TASKS', 'CURRENT TASK', 'DECISIONS & SET ASIDE', 'ESTIMATE']) {
       expect(await ui.find({ type: 'Text', text: title }), title).toBeDefined()
     }
     expect(await ui.find({ type: 'Text', text: /^Ruling/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /brief → écriture/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /brief → implementing/ })).toBeDefined()
     await ui.unmount()
   }
 })
@@ -194,9 +194,9 @@ test('pane omits the blocks it has nothing for', async ($, on) => {
   const { clock, world } = engine(on)
   await replay($, clock, world, PLAN_READY)
   const ui = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'Pane', requestId: 'sp-progress', props: paneProps, viewport: DOCKED })
-  expect(await ui.find({ type: 'Text', text: 'ÉTAPES' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: 'TÂCHES' })).toBeDefined()
-  for (const title of ['TÂCHE EN COURS', 'DÉCISIONS & MIS DE CÔTÉ', 'ESTIMATION']) {
+  expect(await ui.find({ type: 'Text', text: 'STAGES' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'TASKS' })).toBeDefined()
+  for (const title of ['CURRENT TASK', 'DECISIONS & SET ASIDE', 'ESTIMATE']) {
     expect(await ui.find({ type: 'Text', text: title }), title).toBeUndefined()
   }
   await ui.unmount()
@@ -204,8 +204,8 @@ test('pane omits the blocks it has nothing for', async ($, on) => {
 
 test('sp-progress opens then closes the pane', async ($, on) => {
   const { world } = engine(on)
-  expect((await $.command.run(SP_PROGRESS)).text).toBe('Pane de progression ouvert.')
-  expect((await $.command.run(SP_PROGRESS)).text).toBe('Pane de progression fermé.')
+  expect((await $.command.run(SP_PROGRESS)).text).toBe('Progress pane opened.')
+  expect((await $.command.run(SP_PROGRESS)).text).toBe('Progress pane closed.')
   expect(world.opened).toEqual(['sp-progress'])
   expect(world.closed).toEqual(['sp-progress'])
 })
@@ -214,7 +214,7 @@ test('sp-progress opens again a pane closed by other means', { plugins: [CLOSER]
   const { world } = engine(on)
   await $.command.run(SP_PROGRESS)
   await $.tool.call({ tool: 'mcp__closer__close' })
-  expect((await $.command.run(SP_PROGRESS)).text).toBe('Pane de progression ouvert.')
+  expect((await $.command.run(SP_PROGRESS)).text).toBe('Progress pane opened.')
   expect(world.opened).toEqual(['sp-progress', 'sp-progress'])
 })
 

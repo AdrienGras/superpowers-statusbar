@@ -32,22 +32,22 @@ test('turn end with a running background agent is not waiting', () => {
 test('turn end in plan with tasks waits for the execution choice', () => {
   const s = must(run(null, [{ type: 'stage-entered', stage: 'plan', at: 1 }, PLAN, ended(30)]))
   expect(s.waiting).toEqual({ reason: 'execution-choice', since: 30 })
-  expect(waitText(s)).toBe("plan prêt (3 tâches) · choisis le mode d'exécution")
+  expect(waitText(s)).toBe('plan ready (3 tasks) · pick an execution mode')
 })
 
 test('turn end in plan without tasks waits as other', () => {
   const s = must(run(null, [{ type: 'stage-entered', stage: 'plan', at: 1 }, ended(5)]))
   expect(s.waiting?.reason).toBe('other')
-  expect(waitText(s)).toBe('à toi')
+  expect(waitText(s)).toBe('your turn')
 })
 
 test('turn end in brainstorm distinguishes question and spec approval', () => {
   const q = must(run(null, [{ type: 'stage-entered', stage: 'brainstorm', at: 1 }, ended(2)]))
   expect(q.waiting?.reason).toBe('brainstorm-question')
-  expect(waitText(q)).toBe('question en cours')
+  expect(waitText(q)).toBe('question for you')
   const a = must(run(q, [{ type: 'phase-reported', phase: 'awaiting-approval', at: 3 }, ended(4)]))
   expect(a.waiting).toEqual({ reason: 'spec-approval', since: 4 })
-  expect(waitText(a)).toBe('spec à valider')
+  expect(waitText(a)).toBe('review the spec')
 })
 
 test('turn end with a blocked implementer waits as blocked', () => {
@@ -59,7 +59,7 @@ test('turn end with a blocked implementer waits as blocked', () => {
     ended(30),
   ]))
   expect(s.waiting).toEqual({ reason: 'blocked', task: '2', since: 30 })
-  expect(waitText(s)).toBe('Task 2 bloquée')
+  expect(waitText(s)).toBe('Task 2 blocked')
 })
 
 test('turn end with a tripped breaker waits as breaker', () => {
@@ -69,7 +69,7 @@ test('turn end with a tripped breaker waits as breaker', () => {
   ]))
   const s = reduce({ ...base, tasks: base.tasks.map(t => (t.n === '1' ? { ...t, isBreakerTripped: true } : t)) }, ended(40))
   expect(must(s).waiting).toEqual({ reason: 'breaker', task: '1', since: 40 })
-  expect(waitText(must(s))).toBe('Task 1 · 5 fix rounds épuisés')
+  expect(waitText(must(s))).toBe('Task 1 · 5 fix rounds used up')
 })
 
 test('turn end in exec otherwise waits as other, final-review as other, done not at all', () => {
@@ -84,7 +84,7 @@ test('turn end in exec otherwise waits as other, final-review as other, done not
 test('turn end in finishing waits on the finishing menu', () => {
   const s = must(run(null, [{ type: 'stage-entered', stage: 'finishing', at: 1 }, ended(2)]))
   expect(s.waiting).toEqual({ reason: 'finishing-menu', since: 2 })
-  expect(waitText(s)).toBe('prêt pour ton test · menu de fin de branche')
+  expect(waitText(s)).toBe('ready for your test · finishing menu')
 })
 
 test('turn-started clears waiting', () => {
@@ -97,10 +97,10 @@ test('turn-started clears waiting', () => {
 test('notificationFor fires once per wait and never for brainstorm questions', () => {
   const base = must(run(null, [{ type: 'stage-entered', stage: 'finishing', at: 1 }]))
   const waiting = must(reduce(base, ended(2)))
-  expect(notificationFor(base, waiting)).toBe('prêt pour ton test · menu de fin de branche')
+  expect(notificationFor(base, waiting)).toBe('ready for your test · finishing menu')
   expect(notificationFor(waiting, waiting)).toBeUndefined()
-  expect(notificationFor(null, waiting)).toBe('prêt pour ton test · menu de fin de branche')
-  expect(notificationFor(waiting, must(reduce(waiting, ended(9))))).toBe('prêt pour ton test · menu de fin de branche')
+  expect(notificationFor(null, waiting)).toBe('ready for your test · finishing menu')
+  expect(notificationFor(waiting, must(reduce(waiting, ended(9))))).toBe('ready for your test · finishing menu')
   expect(notificationFor(waiting, null)).toBeUndefined()
 
   const q = must(run(null, [{ type: 'stage-entered', stage: 'brainstorm', at: 1 }, ended(2)]))

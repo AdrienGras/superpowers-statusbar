@@ -48,7 +48,7 @@ test('checkTrace accepts a well-ordered SDD trace', () => {
 test('checkTrace reports a task that skipped review in sdd', () => {
   const trace = traceOf(untilFinishingMenu(SDD_RUN)).map(e =>
     e.phases ? { ...e, phases: e.phases.filter(p => !(p.task === '2' && p.phase === 'review')) } : e)
-  expect(checkTrace(trace, 'sdd', 2)).toEqual({ errors: ['tâche 2 : pas de writing puis review avant done'], warnings: [] })
+  expect(checkTrace(trace, 'sdd', 2)).toEqual({ errors: ['task 2: no writing then review before done'], warnings: [] })
 })
 
 test('checkTrace warns when red then green is missing in direct mode', () => {
@@ -58,20 +58,20 @@ test('checkTrace warns when red then green is missing in direct mode', () => {
   const greenFirst = trace.map(e => e.phases
     ? { ...e, phases: e.phases.map(p => (p.phase === 'red' || p.phase === 'green' ? { ...p, phase: swap[p.phase] } : p)) }
     : e)
-  expect(checkTrace(greenFirst, 'direct', 2)).toEqual({ errors: [], warnings: ['aucune tâche ne passe par red puis green'] })
+  expect(checkTrace(greenFirst, 'direct', 2)).toEqual({ errors: [], warnings: ['no task goes through red then green'] })
 })
 
 test('checkTrace requires the final finishing-menu wait once finishing is reached', () => {
   // The full run goes on past the menu: the merge ends it, with no wait.
   expect(checkTrace(traceOf(SDD_RUN), 'sdd', 2))
-    .toEqual({ errors: ["la dernière entrée n'attend pas finishing-menu (aucune attente)"], warnings: [] })
+    .toEqual({ errors: ['the last entry does not wait on finishing-menu (no wait)'], warnings: [] })
 })
 
 test('checkTrace requires finishing after final-review', () => {
   const swap = { 'final-review': 'finishing', finishing: 'final-review' } as const
   const finishingFirst = traceOf(untilFinishingMenu(SDD_RUN)).map(e =>
     e.stage === 'final-review' || e.stage === 'finishing' ? { ...e, stage: swap[e.stage] } : e)
-  expect(checkTrace(finishingFirst, 'sdd', 2)).toEqual({ errors: ['étape finishing absente après final-review'], warnings: [] })
+  expect(checkTrace(finishingFirst, 'sdd', 2)).toEqual({ errors: ['stage finishing missing after final-review'], warnings: [] })
 })
 
 test('checkTrace only warns when the run never reached finishing', () => {
@@ -83,14 +83,14 @@ test('checkTrace only warns when the run never reached finishing', () => {
 test('checkTrace reports a run cut during execution', () => {
   const cut = SDD_RUN.findIndex(e => e.kind === 'tool' && e.tool === 'Bash' && String(e.input.command).includes('task-brief') && String(e.input.command).endsWith(' 2'))
   expect(checkTrace(traceOf(SDD_RUN.slice(0, cut)), 'sdd', 2)).toEqual({
-    errors: ['étape final-review absente après exec', '1 tâche(s) terminée(s) sur 2 attendue(s)'],
+    errors: ['stage final-review missing after exec', '1 task(s) done out of 2 expected'],
     warnings: ['run never reached finishing (model behaviour)'],
   })
 })
 
 test('checkTrace reports an empty trace', () => {
   expect(checkTrace([], 'sdd', 1)).toEqual({
-    errors: ['étape exec absente', '0 tâche(s) terminée(s) sur 1 attendue(s)'],
+    errors: ['stage exec missing', '0 task(s) done out of 1 expected'],
     warnings: ['run never reached finishing (model behaviour)'],
   })
 })

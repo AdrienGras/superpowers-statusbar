@@ -103,7 +103,7 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     await Promise.all([
       $.tool.register(REPORT_TOOL),
-      $.command.register({ name: 'sp-progress', description: 'Ouvre ou ferme le pane de progression superpowers' }),
+      $.command.register({ name: 'sp-progress', description: 'Open or close the superpowers progress pane' }),
     ])
     await rebuildFromTranscript($, options)
     tickEveryMinute($)
@@ -114,10 +114,10 @@ export const register: Register = (on, options) => {
     if (await read($, paneOpenAtom)) {
       await $.ui.close({ id: PANE_ID })
       await update($, paneOpenAtom, () => false)
-      return { text: 'Pane de progression fermé.' }
+      return { text: 'Progress pane closed.' }
     }
     await openPane($)
-    return { text: 'Pane de progression ouvert.' }
+    return { text: 'Progress pane opened.' }
   })
 
   on('ui.close', { id: PANE_ID }, async ($, e, next) => {

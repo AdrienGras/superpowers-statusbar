@@ -24,11 +24,11 @@ const MIN_TASK_ROWS = 3
 
 const REPORTED_LABELS: Record<ReportedPhase, string> = {
   conversation: 'conversation',
-  'design-writing': 'rédaction de la spec',
-  'builder-check': 'spec en relecture',
-  'awaiting-approval': 'spec à valider',
-  drafting: 'rédaction',
-  'self-review': 'relecture du plan',
+  'design-writing': 'writing the spec',
+  'builder-check': 'builder check',
+  'awaiting-approval': 'spec awaiting approval',
+  drafting: 'drafting',
+  'self-review': 'plan self-review',
   red: 'RED',
   green: 'GREEN',
   refactor: 'refactor',
@@ -38,8 +38,8 @@ const REPORTED_LABELS: Record<ReportedPhase, string> = {
 
 export function formatDuration(ms: number): string {
   const minutes = Math.max(0, Math.floor(ms / 60000))
-  if (minutes < 60) return `${minutes} min`
-  return `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, '0')}`
+  if (minutes < 60) return `${minutes}m`
+  return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, '0')}`
 }
 
 export function formatClock(at: number): string {
@@ -50,27 +50,27 @@ export function formatClock(at: number): string {
 export function phaseLabel(e: TaskEvent): string {
   switch (e.phase) {
     case 'brief': return 'brief'
-    case 'writing': return 'écriture'
-    case 'review': return 'relecture'
+    case 'writing': return 'implementing'
+    case 'review': return 'review'
     case 'fix': return `fix ${e.round ?? '?'}/${MAX_FIX_ROUNDS}`
     case 're-review': return `re-review ${e.round ?? '?'}`
     case 'red': return 'RED'
     case 'green': return 'GREEN'
     case 'refactor': return 'refactor'
-    case 'verify': return 'vérif'
-    case 'done': return 'terminée'
+    case 'verify': return 'verify'
+    case 'done': return 'done'
     case 'unknown': return '?'
   }
 }
 
 export function stageLabel(s: RunState): string {
   switch (s.stage) {
-    case 'brainstorm': return 'brainsto'
+    case 'brainstorm': return 'brainstorming'
     case 'plan': return 'plan'
-    case 'exec': return s.mode === 'sdd' ? 'exec SDD' : s.mode === 'direct' ? 'exec direct' : 'exec'
-    case 'final-review': return s.finalReview?.phase === 'fixes' ? 'revue finale · corrections' : 'revue finale'
-    case 'finishing': return 'fin de branche'
-    case 'done': return 'terminé'
+    case 'exec': return s.mode === 'sdd' ? 'exec SDD' : s.mode === 'direct' ? 'exec inline' : 'exec'
+    case 'final-review': return s.finalReview?.phase === 'fixes' ? 'final review · fixes' : 'final review'
+    case 'finishing': return 'finishing'
+    case 'done': return 'done'
   }
 }
 
@@ -98,10 +98,10 @@ function doneBand(s: RunState, now: number): Segment[] {
   const fixRounds = s.tasks.reduce((n, t) => n + t.fixRounds, 0)
   const aside = s.decisions.filter(d => d.kind === 'parked' || d.kind === 'minor').length
   const end = s.finishedAt ?? now
-  const parts = [`${s.tasks.length} tâches`, `${fixRounds} fix rounds`, `${aside} points mis de côté`]
+  const parts = [`${s.tasks.length} tasks`, `${fixRounds} fix rounds`, `${aside} set aside`]
   const elapsed = s.startedAt ? formatDuration(end - s.startedAt) : undefined
   if (elapsed) parts.push(elapsed)
-  return [{ text: '✓ terminé', tone: 'ok', isBold: true }, ...parts.flatMap(p => [sep(' · '), { text: p, tone: 'normal' as const }])]
+  return [{ text: '✓ done', tone: 'ok', isBold: true }, ...parts.flatMap(p => [sep(' · '), { text: p, tone: 'normal' as const }])]
 }
 
 type Parts = { isElapsed: boolean; isTitle: boolean; isBar: boolean }
@@ -149,7 +149,7 @@ function simpleBand(s: RunState, now: number): Segment[] {
   const out: Segment[] = [{ text: '●', tone: 'active' }, sep(' '), { text: stageLabel(s), tone: 'normal' }]
   let phase: string | undefined
   if (s.stagePhase) phase = REPORTED_LABELS[s.stagePhase]
-  else if (s.stage === 'plan' && s.tasks.length > 0) phase = `${s.tasks.length} tâches`
+  else if (s.stage === 'plan' && s.tasks.length > 0) phase = `${s.tasks.length} tasks`
   if (phase) out.push(sep(' · '), { text: phase, tone: 'normal' })
   if (s.stage !== 'brainstorm' && s.stage !== 'plan') {
     const elapsed = elapsedOf(s, now)
@@ -177,11 +177,11 @@ function fitExecBand(s: RunState, now: number, columns: number): Segment[] {
 }
 
 function waitingBand(s: RunState, columns: number): Segment[] {
-  const badge = "T'ATTEND "
+  const badge = 'WAITING '
   const message = waitText(s)
   const room = columns - badge.length
   const shown = message.length <= room ? message : `${message.slice(0, Math.max(0, room - 1))}…`
-  const out: Segment[] = [{ text: "T'ATTEND", tone: 'wait', isBold: true }, sep(' '), { text: shown, tone: 'wait' }]
+  const out: Segment[] = [{ text: 'WAITING', tone: 'wait', isBold: true }, sep(' '), { text: shown, tone: 'wait' }]
   const counter = `${counterOf(s)}/${s.tasks.length}`
   if (s.stage === 'exec' && shown === message && badge.length + message.length + 3 + counter.length <= columns) {
     out.push(sep(' · '), { text: counter, tone: 'normal', isBold: true })
@@ -238,6 +238,6 @@ export function paneModel(s: RunState, now: number, rows: number): PaneModel {
     hiddenTasks: s.tasks.length - (end - start),
     ...(cur ? { current: { n: cur.n, trail: cur.trail.map(e => e.verdict ? `${phaseLabel(e)} (${e.verdict})` : phaseLabel(e)) } } : {}),
     decisions: s.decisions,
-    ...(est ? { eta: `moy. ${formatDuration(est.avgMs)}/tâche · reste ~${formatDuration(est.remainingMs)} · fin vers ${formatClock(est.finishAt)}` } : {}),
+    ...(est ? { eta: `avg ${formatDuration(est.avgMs)}/task · ~${formatDuration(est.remainingMs)} left · ETA ${formatClock(est.finishAt)}` } : {}),
   }
 }

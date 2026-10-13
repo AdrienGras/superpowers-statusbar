@@ -10,7 +10,7 @@ const STAGES: readonly Stage[] = ['brainstorm', 'plan', 'exec', 'final-review', 
 const rank = (stage: Stage) => STAGES.indexOf(stage)
 
 const TASK_PHASES: ReadonlySet<ReportedPhase> = new Set<ReportedPhase>(['red', 'green', 'refactor'])
-const PLAN_COUNT = / étapes$/
+const PLAN_COUNT = / steps$/
 
 export function newRun(stage: Stage, at: number, mode?: Mode): RunState {
   return {
@@ -53,7 +53,7 @@ function addMilestone(s: RunState, m: Milestone, supersedes?: (old: Milestone) =
 
 function withExecMilestone(s: RunState, at: number): RunState {
   if (s.stage !== 'exec' || !s.mode || s.milestones.some(m => m.stage === 'exec')) return s
-  return addMilestone(s, { stage: 'exec', label: s.mode === 'sdd' ? 'exec SDD' : 'exec direct', at })
+  return addMilestone(s, { stage: 'exec', label: s.mode === 'sdd' ? 'exec SDD' : 'exec inline', at })
 }
 
 const setAgent = (s: RunState, id: string, rec: AgentRecord): RunState => ({ ...s, agents: { ...s.agents, [id]: rec } })
@@ -119,7 +119,7 @@ export function reduce(s: RunState | null, a: Action): RunState | null {
   switch (a.type) {
     case 'phase-reported': return phaseReported(s, a)
     case 'spec-written':
-      return addMilestone({ ...s, specPath: a.path }, { stage: 'brainstorm', label: 'spec écrite', at: a.at })
+      return addMilestone({ ...s, specPath: a.path }, { stage: 'brainstorm', label: 'spec written', at: a.at })
     case 'plan-loaded': return planLoaded(s, a)
     case 'workspace-found': return { ...s, workspace: a.path, planPath: a.planPath }
     case 'task-started':
@@ -133,7 +133,7 @@ export function reduce(s: RunState | null, a: Action): RunState | null {
     case 'agent-reported': return agentReported(s, a)
     case 'task-verified':
       return upsertTask(s, a.task, t =>
-        a.isOk ? finish(push(t, { phase: 'verify', at: a.at }), a.at) : push(t, { phase: 'verify', at: a.at, verdict: 'échec' }))
+        a.isOk ? finish(push(t, { phase: 'verify', at: a.at }), a.at) : push(t, { phase: 'verify', at: a.at, verdict: 'failed' }))
     case 'ledger-loaded': return ledgerLoaded(s, a)
     case 'workspace-removed':
       return s.stage === 'final-review' || s.stage === 'exec' ? { ...s, finalReview: { ...s.finalReview, phase: 'done' } } : s
@@ -185,7 +185,7 @@ function phaseReported(s: RunState, a: ActionOf<'phase-reported'>): RunState {
   }
   const next = { ...s, stagePhase: a.phase }
   if (a.phase === 'builder-check') return addMilestone(next, { stage: 'brainstorm', label: 'builder check', at: a.at })
-  if (a.phase === 'awaiting-approval') return addMilestone(next, { stage: 'brainstorm', label: 'spec à valider', at: a.at })
+  if (a.phase === 'awaiting-approval') return addMilestone(next, { stage: 'brainstorm', label: 'spec awaiting approval', at: a.at })
   return next
 }
 
@@ -199,7 +199,7 @@ function planLoaded(s: RunState, a: ActionOf<'plan-loaded'>): RunState {
   const next = { ...(s.stage === 'brainstorm' ? setStage(s, 'plan') : s), planPath: a.path, tasks }
   return addMilestone(
     next,
-    { stage: 'plan', label: `${a.tasks.length} tâches · ${steps} étapes`, at: a.at },
+    { stage: 'plan', label: `${a.tasks.length} tasks · ${steps} steps`, at: a.at },
     m => m.stage === 'plan' && PLAN_COUNT.test(m.label),
   )
 }

@@ -5,7 +5,7 @@ import { checkTrace } from '../src/e2e.ts'
 
 const [path, mode, tasks] = process.argv.slice(2)
 if (!path || (mode !== 'sdd' && mode !== 'direct') || !tasks || !/^[0-9]+$/.test(tasks)) {
-  console.error('usage: node scripts/e2e-check.ts <trace.jsonl> <sdd|direct> <nombre de tâches>')
+  console.error('usage: node scripts/e2e-check.ts <trace.jsonl> <sdd|direct> <task count>')
   process.exit(2)
 }
 
@@ -13,14 +13,14 @@ let text: string
 try {
   text = readFileSync(path, 'utf8')
 } catch {
-  console.log(`✗ trace absente : ${path}`)
+  console.log(`✗ trace missing: ${path}`)
   process.exit(1)
 }
 let entries: TraceEntry[]
 try {
   entries = text.split('\n').filter(line => line.trim() !== '').map(line => JSON.parse(line) as TraceEntry)
 } catch {
-  console.log(`✗ trace illisible (JSON invalide) : ${path}`)
+  console.log(`✗ trace unreadable (invalid JSON): ${path}`)
   process.exit(1)
 }
 

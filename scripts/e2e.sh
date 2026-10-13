@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# E2E local : exécute le plan de e2e/fixture avec un vrai `claude -p`, le mod et une version donnée de superpowers
-# chargés depuis leurs dossiers, puis vérifie la trace écrite par le mod (SP_STATUSBAR_TRACE).
-# Usage : bash scripts/e2e.sh <dossier superpowers> [sdd|direct|all]
-# Coûte des tokens et prend plusieurs minutes par mode.
+# Local E2E: runs the e2e/fixture plan with a real `claude -p`, the mod and a given superpowers version loaded
+# from their folders, then checks the trace the mod wrote (SP_STATUSBAR_TRACE).
+# Usage: bash scripts/e2e.sh <superpowers folder> [sdd|direct|all]
+# Costs tokens and takes several minutes per mode.
 set -uo pipefail
 
-usage() { echo "usage: bash scripts/e2e.sh <dossier superpowers> [sdd|direct|all]" >&2; exit 2; }
+usage() { echo "usage: bash scripts/e2e.sh <superpowers folder> [sdd|direct|all]" >&2; exit 2; }
 
 [ $# -ge 1 ] || usage
-SP=$(cd "$1" 2>/dev/null && pwd) || { echo "dossier superpowers introuvable : $1" >&2; exit 2; }
+SP=$(cd "$1" 2>/dev/null && pwd) || { echo "superpowers folder not found: $1" >&2; exit 2; }
 case "${2:-all}" in
   sdd) MODES=(sdd) ;;
   direct) MODES=(direct) ;;
   all) MODES=(sdd direct) ;;
   *) usage ;;
 esac
-command -v claude >/dev/null || { echo "claude introuvable" >&2; exit 2; }
-command -v jq >/dev/null || { echo "jq introuvable" >&2; exit 2; }
+command -v claude >/dev/null || { echo "claude not found" >&2; exit 2; }
+command -v jq >/dev/null || { echo "jq not found" >&2; exit 2; }
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 PLAN=docs/superpowers/plans/2026-01-01-text-utils.md
@@ -25,7 +25,7 @@ VERSION=$(jq -r '.version // empty' "$SP/.claude-plugin/plugin.json" 2>/dev/null
 VERSION=${VERSION:-$(basename "$SP")}
 STAMP=$(date +%Y-%m-%d-%H%M%S)
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/sp-e2e.XXXXXX")
-echo "superpowers $VERSION ($SP), dossier de travail : $TMP"
+echo "superpowers $VERSION ($SP), working folder: $TMP"
 
 prompt() {
   local skill=subagent-driven-development
@@ -43,20 +43,20 @@ for mode in "${MODES[@]}"; do
   git -C "$repo" init -q
   git -C "$repo" add -A
   git -C "$repo" -c user.name=e2e -c user.email=e2e@example.invalid commit -q -m "chore: text-utils fixture"
-  # Une branche de travail, comme un vrai run : sur la branche principale, la fin de branche peut être sautée.
+  # A work branch, as in a real run: on the main branch, finishing may be skipped.
   git -C "$repo" checkout -q -b feat/text-utils
 
-  # Isolé de la configuration personnelle : --setting-sources project,local ignore les réglages utilisateur, donc
-  # ses hooks (une réécriture des commandes y changeait ce que voient les permissions), ses plugins installés (dont
-  # un autre superpowers) et son CLAUDE.md ; l'authentification reste. Seuls le mod et la version testée sont chargés.
-  # Pas de bypassPermissions : un agent sans surveillance avec toutes les permissions sur la machine, c'est trop large.
-  # acceptEdits (écritures dans le dossier du run seulement ; Write et Edit ne sont pas ajoutés, ils ouvriraient
-  # tous les chemins), Read (lecture seule, partout : les skills sont hors du dossier) et une liste d'outils limitée
-  # à ce que le run demande : les scripts de la version de superpowers testée, `node --test`, git, npm test, et la
-  # suppression du workspace du plan (`rm -rf <workspace>`, chemin exact). Les autres commandes Bash sont refusées.
-  # Ce n'est PAS une frontière de sécurité : `npm test` exécute un package.json et des tests que le modèle écrit,
-  # `node --test` aussi, git accepte `-C <autre dépôt>` et des alias `-c alias.x='!cmd'`, et les règles de chemin
-  # acceptent `..`. La liste guide un modèle coopératif ; le run doit être traité comme non sandboxé.
+  # Isolated from the personal configuration: --setting-sources project,local ignores the user settings, hence
+  # their hooks (a command rewrite there changed what the permissions saw), their installed plugins (another
+  # superpowers among them) and their CLAUDE.md; authentication stays. Only the mod and the tested version are loaded.
+  # No bypassPermissions: an unattended agent with every permission on the machine is too broad.
+  # acceptEdits (writes in the run's folder only; Write and Edit are not added, they would open every path),
+  # Read (read-only, everywhere: the skills live outside the folder) and a tool list limited to what the run
+  # needs: the scripts of the tested superpowers version, `node --test`, git, npm test, and removing the plan's
+  # workspace (`rm -rf <workspace>`, exact path). Other Bash commands are refused.
+  # This is NOT a security boundary: `npm test` runs a package.json and tests the model writes, so does
+  # `node --test`, git takes `-C <another repo>` and `-c alias.x='!cmd'` aliases, and the path rules accept
+  # `..`. The list guides a cooperative model; treat the run as unsandboxed.
   workspace=.superpowers/sdd/2026-01-01-text-utils
   allowed=(
     Read Skill Agent Task SendMessage ToolSearch mcp__superpowers-statusbar__report_phase
@@ -65,7 +65,7 @@ for mode in "${MODES[@]}"; do
     "Bash(rm -rf $workspace)" "Bash(rm -rf $repo/$workspace)"
   )
 
-  echo "E2E $mode : claude -p en cours…"
+  echo "E2E $mode: claude -p running…"
   (cd "$repo" && SP_STATUSBAR_TRACE="$trace" claude -p \
     --plugin-dir "$ROOT" --plugin-dir "$SP" \
     --setting-sources project,local \
@@ -76,25 +76,25 @@ for mode in "${MODES[@]}"; do
   status=$?
 
   problems=()
-  [ "$status" -eq 0 ] || problems+=("claude -p a terminé avec le code $status")
-  # L'isolation tient : un seul plugin superpowers, celui du dossier testé.
+  [ "$status" -eq 0 ] || problems+=("claude -p exited with code $status")
+  # The isolation holds: one superpowers plugin, the tested folder's.
   loaded=$(jq -r 'select(.type == "system" and .subtype == "init") | .plugins[] | select(.name == "superpowers") | .path' "$stream" | sort -u)
-  [ "$loaded" = "$SP" ] || problems+=("superpowers chargés : ${loaded:-aucun} (attendu : $SP seul)")
-  # Le mod a vu l'exécution démarrer.
+  [ "$loaded" = "$SP" ] || problems+=("superpowers loaded: ${loaded:-none} (expected: $SP only)")
+  # The mod saw the execution start.
   jq -e -s 'any(.[]; .action == "stage-entered" and .stage == "exec")' "$trace" >/dev/null 2>&1 \
-    || problems+=("la trace ne contient aucun stage-entered exec")
+    || problems+=("the trace holds no stage-entered exec")
 
   if [ -f "$trace" ]; then
     mkdir -p "$ROOT/fixtures-local/e2e"
     cp "$trace" "$ROOT/fixtures-local/e2e/$VERSION-$mode-$STAMP.jsonl"
   fi
 
-  # `${a[@]+…}` : sous bash 3.2 et `set -u`, un tableau vide développé tel quel est une variable non définie.
+  # `${a[@]+…}`: under bash 3.2 and `set -u`, an empty array expanded as is counts as an unset variable.
   for p in ${problems[@]+"${problems[@]}"}; do echo "✗ $p"; done
   if node "$ROOT/scripts/e2e-check.ts" "$trace" "$mode" "$TASKS" && [ ${#problems[@]} -eq 0 ]; then
-    echo "E2E $mode : OK"
+    echo "E2E $mode: OK"
   else
-    echo "E2E $mode : échec (trace : $trace, transcript : $stream)"
+    echo "E2E $mode: failed (trace: $trace, transcript: $stream)"
     failed=1
   fi
 done

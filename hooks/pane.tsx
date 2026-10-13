@@ -33,7 +33,7 @@ const decisionLine = (d: Decision) => `${DECISION_LABELS[d.kind]}${d.task ? ` ·
 export const renderPane: MatchedHook<'ui.render', { component: 'Pane', requestId: 'sp-progress' }> = async ($, e) => {
   const { Box, Text } = $.ui.resolve(e)
   const run = await read($, runAtom)
-  if (run === null) return <Box><Text dimColor>Aucun run superpowers.</Text></Box>
+  if (run === null) return <Box><Text dimColor>No superpowers run yet.</Text></Box>
   const m = paneModel(run, await $.clock.now(), e.viewport?.rows ?? 24)
   const block = (title: string, lines: string[]) => (
     <Box flexDirection="column" marginTop={1}>
@@ -46,11 +46,11 @@ export const renderPane: MatchedHook<'ui.render', { component: 'Pane', requestId
   return (
     <Box flexDirection="column" width={e.props.bodyColumns}>
       <Text bold>{m.elapsed ? `${m.title} · ${m.elapsed}` : m.title}</Text>
-      {block('ÉTAPES', m.stages.map(stageLine))}
-      {tasks.length > 0 && block('TÂCHES', tasks)}
-      {m.current && block('TÂCHE EN COURS', [`Task ${m.current.n} · ${m.current.trail.join(' → ')}`])}
-      {m.decisions.length > 0 && block('DÉCISIONS & MIS DE CÔTÉ', m.decisions.map(decisionLine))}
-      {m.eta && block('ESTIMATION', [m.eta])}
+      {block('STAGES', m.stages.map(stageLine))}
+      {tasks.length > 0 && block('TASKS', tasks)}
+      {m.current && block('CURRENT TASK', [`Task ${m.current.n} · ${m.current.trail.join(' → ')}`])}
+      {m.decisions.length > 0 && block('DECISIONS & SET ASIDE', m.decisions.map(decisionLine))}
+      {m.eta && block('ESTIMATE', [m.eta])}
     </Box>
   )
 }

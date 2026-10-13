@@ -19,7 +19,7 @@ function inOrder<T>(seq: readonly T[], wanted: readonly T[]): boolean {
  * distinct tasks reaching `done`; in `sdd`, each done task through `writing` then `review`; in `direct`, each done
  * task through `verify`; once the run reached finishing, a last entry waiting on the finishing menu. Warnings: in
  * `direct`, no task through `red` then `green`; a run that never reached finishing. Task phases come from the
- * entries' `phases`. Errors are in French; the finishing warning is worded as the controller ruled.
+ * entries' `phases`. The finishing warning is worded as the controller ruled.
  */
 export function checkTrace(entries: readonly TraceEntry[], mode: Mode, expectedTasks: number): TraceCheck {
   const errors: string[] = []
@@ -30,7 +30,7 @@ export function checkTrace(entries: readonly TraceEntry[], mode: Mode, expectedT
   for (const [k, stage] of STAGES.entries()) {
     const i = entries.findIndex((e, j) => j >= from && e.stage === stage)
     if (i < 0) {
-      errors.push(k === 0 ? `étape ${stage} absente` : `étape ${stage} absente après ${STAGES[k - 1]}`)
+      errors.push(k === 0 ? `stage ${stage} missing` : `stage ${stage} missing after ${STAGES[k - 1]}`)
       isInOrder = false
       break
     }
@@ -38,7 +38,7 @@ export function checkTrace(entries: readonly TraceEntry[], mode: Mode, expectedT
   }
   const isFinishingReached = entries.some(e => e.stage === 'finishing')
   if (isInOrder && isFinishingReached && !entries.some((e, j) => j >= from && e.stage === 'finishing')) {
-    errors.push('étape finishing absente après final-review')
+    errors.push('stage finishing missing after final-review')
   }
 
   const trails = new Map<string, TaskPhase[]>()
@@ -46,19 +46,19 @@ export function checkTrace(entries: readonly TraceEntry[], mode: Mode, expectedT
     for (const p of e.phases ?? []) trails.set(p.task, [...(trails.get(p.task) ?? []), p.phase])
   }
   const done = [...trails].filter(([, trail]) => trail.includes('done'))
-  if (done.length !== expectedTasks) errors.push(`${done.length} tâche(s) terminée(s) sur ${expectedTasks} attendue(s)`)
+  if (done.length !== expectedTasks) errors.push(`${done.length} task(s) done out of ${expectedTasks} expected`)
   for (const [task, trail] of done) {
-    if (mode === 'sdd' && !inOrder(trail, ['writing', 'review', 'done'])) errors.push(`tâche ${task} : pas de writing puis review avant done`)
-    if (mode === 'direct' && !inOrder(trail, ['verify', 'done'])) errors.push(`tâche ${task} : pas de verify avant done`)
+    if (mode === 'sdd' && !inOrder(trail, ['writing', 'review', 'done'])) errors.push(`task ${task}: no writing then review before done`)
+    if (mode === 'direct' && !inOrder(trail, ['verify', 'done'])) errors.push(`task ${task}: no verify before done`)
   }
   if (mode === 'direct' && ![...trails.values()].some(trail => inOrder(trail, ['red', 'green']))) {
-    warnings.push('aucune tâche ne passe par red puis green')
+    warnings.push('no task goes through red then green')
   }
 
   if (isFinishingReached) {
     const last = entries[entries.length - 1]
     if (last?.waiting !== 'finishing-menu') {
-      errors.push(`la dernière entrée n'attend pas finishing-menu (${last?.waiting ?? 'aucune attente'})`)
+      errors.push(`the last entry does not wait on finishing-menu (${last?.waiting ?? 'no wait'})`)
     }
   } else {
     warnings.push('run never reached finishing (model behaviour)')

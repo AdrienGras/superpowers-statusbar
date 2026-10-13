@@ -7,13 +7,13 @@ export function waitText(s: RunState): string {
   const w = s.waiting
   if (!w) return ''
   switch (w.reason) {
-    case 'brainstorm-question': return 'question en cours'
-    case 'spec-approval': return 'spec à valider'
-    case 'execution-choice': return `plan prêt (${s.tasks.length} tâches) · choisis le mode d'exécution`
-    case 'blocked': return `Task ${w.task ?? '?'} bloquée`
-    case 'breaker': return `Task ${w.task ?? '?'} · 5 fix rounds épuisés`
-    case 'finishing-menu': return 'prêt pour ton test · menu de fin de branche'
-    case 'other': return 'à toi'
+    case 'brainstorm-question': return 'question for you'
+    case 'spec-approval': return 'review the spec'
+    case 'execution-choice': return `plan ready (${s.tasks.length} tasks) · pick an execution mode`
+    case 'blocked': return `Task ${w.task ?? '?'} blocked`
+    case 'breaker': return `Task ${w.task ?? '?'} · 5 fix rounds used up`
+    case 'finishing-menu': return 'ready for your test · finishing menu'
+    case 'other': return 'your turn'
   }
 }
 

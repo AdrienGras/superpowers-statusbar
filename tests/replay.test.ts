@@ -18,7 +18,7 @@ test('replaying an SDD run ends done with every task done and one fix round on t
   expect(s.tasks.map(t => t.fixRounds)).toEqual([0, 1])
   for (const t of s.tasks) expect(t.doneAt! < t.startedAt!).toBe(false)
   expect(s.tasks[1]!.trail.map(e => e.phase)).toEqual(['brief', 'writing', 'review', 'fix', 're-review', 'done'])
-  expect(s.finalReview).toEqual({ phase: 'done', verdict: 'prêt' })
+  expect(s.finalReview).toEqual({ phase: 'done', verdict: 'ready' })
   expect(s.decisions.map(d => d.kind)).toEqual(['ruling', 'minor'])
   expect(s.waiting).toBeUndefined()
 })

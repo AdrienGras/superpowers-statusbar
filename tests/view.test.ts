@@ -34,14 +34,14 @@ function seven(): RunState {
 
 test('band shows stage, bar, counter, task title, phase, fix round and elapsed', () => {
   expect(text(bandSegments(seven(), NOW, 200))).toBe(
-    '● exec SDD ▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱ 7/15 · Task 7 « Parser du ledger » · relecture · fix 2/5 · 42 min')
+    '● exec SDD ▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱ 7/15 · Task 7 « Parser du ledger » · review · fix 2/5 · 42m')
 })
 
 test('band drops elapsed, then title, then bar as columns shrink', () => {
   const s = seven()
   const full = text(bandSegments(s, NOW, 200))
   const noElapsed = text(bandSegments(s, NOW, full.length - 1))
-  expect(noElapsed).not.toContain('42 min')
+  expect(noElapsed).not.toContain('42m')
   expect(noElapsed).toContain('« Parser du ledger »')
   const noTitle = text(bandSegments(s, NOW, noElapsed.length - 1))
   expect(noTitle).not.toContain('«')
@@ -56,14 +56,14 @@ test('band drops elapsed, then title, then bar as columns shrink', () => {
 
 test('band does not repeat a fix phase as a fix round', () => {
   const s = execRun(0, 3, { fixRounds: 1, trail: [{ phase: 'fix', round: 1, at: 5 }] })
-  expect(text(bandSegments(s, NOW, 200))).toBe('● exec SDD ▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱ 1/3 · Task 1 « T1 » · fix 1/5 · 42 min')
+  expect(text(bandSegments(s, NOW, 200))).toBe('● exec SDD ▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱ 1/3 · Task 1 « T1 » · fix 1/5 · 42m')
 })
 
-test("band leads with T'ATTEND and the wait text when waiting", () => {
+test("band leads with WAITING and the wait text when waiting", () => {
   const s: RunState = { ...seven(), waiting: { reason: 'blocked', task: '7', since: 5 } }
   const segs = bandSegments(s, NOW, 200)
-  expect(segs[0]).toEqual({ text: "T'ATTEND", tone: 'wait', isBold: true })
-  expect(text(segs)).toBe("T'ATTEND Task 7 bloquée · 7/15")
+  expect(segs[0]).toEqual({ text: 'WAITING', tone: 'wait', isBold: true })
+  expect(text(segs)).toBe('WAITING Task 7 blocked · 7/15')
 })
 
 test('waiting plan band is the badge and the wait text only', () => {
@@ -71,17 +71,17 @@ test('waiting plan band is the badge and the wait text only', () => {
     ...newRun('plan', 1000), tasks: Array.from({ length: 15 }, (_, k) => mkTask(k + 1)),
     waiting: { reason: 'execution-choice', since: 5 },
   }
-  expect(text(bandSegments(s, NOW, 200))).toBe("T'ATTEND plan prêt (15 tâches) · choisis le mode d'exécution")
+  expect(text(bandSegments(s, NOW, 200))).toBe('WAITING plan ready (15 tasks) · pick an execution mode')
 })
 
 test('waiting band truncates the wait text and omits the counter when narrow', () => {
   const s: RunState = { ...seven(), waiting: { reason: 'blocked', task: '7', since: 5 } }
-  const full = "T'ATTEND Task 7 bloquée"
+  const full = 'WAITING Task 7 blocked'
   const noCounter = text(bandSegments(s, NOW, full.length + 3))
   expect(noCounter).toBe(full)
   const narrow = text(bandSegments(s, NOW, 20))
   expect(narrow.length).toBeLessThanOrEqual(20)
-  expect(narrow.startsWith("T'ATTEND ")).toBe(true)
+  expect(narrow.startsWith('WAITING ')).toBe(true)
   expect(narrow.endsWith('…')).toBe(true)
   const plan: RunState = { ...newRun('plan', 1), waiting: { reason: 'execution-choice', since: 5 } }
   const cut = text(bandSegments(plan, NOW, 25))
@@ -97,17 +97,17 @@ test('band summarises a finished run', () => {
       { kind: 'parked', task: '1', text: 'a' }, { kind: 'minor', text: 'b' }, { kind: 'ruling', text: 'c' },
     ],
   }
-  expect(text(bandSegments(s, NOW, 200))).toBe('✓ terminé · 2 tâches · 3 fix rounds · 2 points mis de côté · 1 h 05')
+  expect(text(bandSegments(s, NOW, 200))).toBe('✓ done · 2 tasks · 3 fix rounds · 2 set aside · 1h05')
 })
 
 test('band in brainstorm shows the reported phase', () => {
   const s: RunState = { ...newRun('brainstorm', 1000), stagePhase: 'awaiting-approval' }
-  expect(text(bandSegments(s, NOW, 200))).toBe('● brainsto · spec à valider')
+  expect(text(bandSegments(s, NOW, 200))).toBe('● brainstorming · spec awaiting approval')
 })
 
 test('band in plan shows the task count when no phase is reported', () => {
   const s: RunState = { ...newRun('plan', 1000), tasks: [mkTask(1), mkTask(2), mkTask(3)] }
-  expect(text(bandSegments(s, NOW, 200))).toBe('● plan · 3 tâches')
+  expect(text(bandSegments(s, NOW, 200))).toBe('● plan · 3 tasks')
 })
 
 test('estimate averages measured tasks only', () => {
@@ -122,9 +122,9 @@ test('estimate averages measured tasks only', () => {
 })
 
 test('formatDuration formats minutes and hours', () => {
-  expect(formatDuration(42 * MIN)).toBe('42 min')
-  expect(formatDuration(65 * MIN)).toBe('1 h 05')
-  expect(formatDuration(120 * MIN)).toBe('2 h 00')
+  expect(formatDuration(42 * MIN)).toBe('42m')
+  expect(formatDuration(65 * MIN)).toBe('1h05')
+  expect(formatDuration(120 * MIN)).toBe('2h00')
 })
 
 test('paneModel folds tasks around the current one', () => {
@@ -133,8 +133,8 @@ test('paneModel folds tasks around the current one', () => {
   expect(p.tasks).toHaveLength(10)
   expect(p.tasks.map(t => t.n)).toContain('8')
   expect(p.hiddenTasks).toBe(5)
-  expect(p.current).toEqual({ n: '8', trail: ['relecture (Approved)'] })
-  expect(p.eta).toMatch(/^moy\. 6 min\/tâche · reste ~48 min · fin vers \d\d:\d\d$/)
+  expect(p.current).toEqual({ n: '8', trail: ['review (Approved)'] })
+  expect(p.eta).toMatch(/^avg 6m\/task · ~48m left · ETA \d\d:\d\d$/)
 })
 
 test('paneModel shows at least 3 task rows', () => {
@@ -146,8 +146,8 @@ test('paneModel marks unreached earlier stages as skipped', () => {
   const p = paneModel(s, NOW, 30)
   expect(p.title).toBe('superpowers · recettes')
   expect(p.stages.map(g => [g.label, g.status])).toEqual([
-    ['brainsto', 'skipped'], ['plan', 'skipped'], ['exec SDD', 'active'],
-    ['revue finale', 'todo'], ['fin de branche', 'todo'], ['terminé', 'todo'],
+    ['brainstorming', 'skipped'], ['plan', 'skipped'], ['exec SDD', 'active'],
+    ['final review', 'todo'], ['finishing', 'todo'], ['done', 'todo'],
   ])
   expect(p.stages[2]!.detail).toBe('1/3')
   expect(paneModel(newRun('exec', 1, 'direct'), NOW, 30).title).toBe('superpowers')
