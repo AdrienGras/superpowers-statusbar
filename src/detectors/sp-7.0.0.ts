@@ -61,6 +61,7 @@ export const MARKERS: readonly Marker[] = [
   marker('finishing.push', 'skills/finishing-a-development-branch/SKILL.md', 'git push -u origin <feature-branch>'),
   marker('finishing.discard', 'skills/finishing-a-development-branch/SKILL.md', 'git branch -D <feature-branch>'),
   marker('finishing.keep', 'skills/finishing-a-development-branch/SKILL.md', '3. Keep the branch as-is'),
+  marker('finishing.keep.report', 'skills/finishing-a-development-branch/SKILL.md', 'Report: "Keeping branch <name>.'),
 ]
 
 // --- detection ---
@@ -87,14 +88,18 @@ const only = (a: Action): Detection => ({ actions: [a], reads: [] })
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
 const isBeforeExec = (s: RunState) => s.stage === 'brainstorm' || s.stage === 'plan'
 
+/** The report of choice 3 (keep), in English or French; the French menu line "Garder la branche" does not match. */
+const KEEP_REPORT = /\bKeeping (?:the )?branch\b|\b(?:gard|conserv)(?:e|erai|ons|erons)\s+la\s+branche\b|\bbranche(?:\s+\S+)?\s+(?:gardée|conservée)/i
+
 export function detect(e: ObservedEvent, s: RunState | null): Detection {
   switch (e.kind) {
     case 'skill': return skillUsed(e.skill, e.at, e.agentId)
     case 'turn-start': return s ? only({ type: 'turn-started', at: e.at }) : none()
     case 'turn-end':
       if (!s) return none()
-      return only(e.agentId
-        ? { type: 'agent-reported', agentId: e.agentId, answer: e.answer, at: e.at }
+      if (e.agentId) return only({ type: 'agent-reported', agentId: e.agentId, answer: e.answer, at: e.at })
+      return only(s.stage === 'finishing' && s.isMenuAnswered && KEEP_REPORT.test(e.answer)
+        ? { type: 'branch-finished', at: e.at }
         : { type: 'turn-ended', at: e.at })
     case 'file':
       if (!s) return none()

@@ -362,3 +362,28 @@ test('a subagent\'s skill carries its agentId', () => {
   expect(detect({ kind: 'skill', skill: 'superpowers:finishing-a-development-branch', agentId: 'a1', at }, null).actions)
     .toEqual([{ type: 'stage-entered', stage: 'finishing', agentId: 'a1', at }])
 })
+
+test('a keep report after the menu was answered finishes the branch', () => {
+  const s = state('finishing', { isMenuAnswered: true })
+  for (const answer of [
+    'Keeping branch feat/x. Worktree preserved at /w.',
+    'Je garde la branche feat/x telle quelle.',
+    'Branche feat/x conservée.',
+  ]) {
+    expect(detect({ kind: 'turn-end', answer, at: AT }, s).actions).toEqual([{ type: 'branch-finished', at: AT }])
+  }
+})
+
+test('other answers only end the turn', () => {
+  const s = state('finishing', { isMenuAnswered: true })
+  for (const answer of [
+    "This will permanently delete feat/x. Type 'discard' to confirm.",
+    'Je corrige les tests.',
+    '3. Garder la branche telle quelle',
+  ]) {
+    expect(detect({ kind: 'turn-end', answer, at: AT }, s).actions).toEqual([{ type: 'turn-ended', at: AT }])
+  }
+  const unanswered = state('finishing')
+  expect(detect({ kind: 'turn-end', answer: 'Keeping branch feat/x.', at: AT }, unanswered).actions)
+    .toEqual([{ type: 'turn-ended', at: AT }])
+})

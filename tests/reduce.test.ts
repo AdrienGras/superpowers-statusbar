@@ -484,3 +484,24 @@ test('a subagent with a known role does not move the run', () => {
     expect(reduce(s, { type: 'stage-entered', stage: 'finishing', agentId: 'ag', at: 3 })).toBe(s)
   }
 })
+
+test('after the menu was answered a turn end waits on the person, not the menu', () => {
+  const s = must(run(null, [
+    { type: 'stage-entered', stage: 'finishing', at: 1 },
+    { type: 'turn-ended', at: 2 },
+    { type: 'turn-started', at: 3 },
+    { type: 'turn-ended', at: 4 },
+  ]))
+  expect(s.isMenuAnswered).toBe(true)
+  expect(s.stage).toBe('finishing')
+  expect(s.waiting).toEqual({ reason: 'other', since: 4 })
+})
+
+test('a turn end while an agent runs clears the previous wait', () => {
+  const s = must(run(execRun(), [
+    { type: 'turn-ended', at: 30 },
+    { type: 'agent-dispatched', agentId: 'a1', role: 'implementer', task: '1', isRunning: true, at: 31 },
+    { type: 'turn-ended', at: 32 },
+  ]))
+  expect(s.waiting).toBeUndefined()
+})

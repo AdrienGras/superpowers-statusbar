@@ -149,7 +149,7 @@ Marqueurs utilisés (superpowers 7.0.0) :
 | `rm` récursif (`-r`, `-R`, `-rf`, `-fr`, `--recursive`, avec ou sans `--`) d'un seul chemin qui est le workspace du run : chemin complet, chemin relatif contenant `.superpowers/sdd/` dont le workspace est le suffixe, ou `$VAR` / `${VAR}` assignée à ce workspace plus tôt dans la même commande ; sans workspace connu, rien *(v0.1.1)* | workspace supprimé, fin de l'exécution |
 | Skill `finishing-a-development-branch` | fin de branche ; son menu = attente |
 | En fin de branche : Bash `git merge`, `git push`, `gh pr create` ou `git branch -D` | run terminé (fusion, PR ou abandon) |
-| En fin de branche : un tour qui répond au menu se termine sans aucune de ces commandes *(décidé pendant l'implémentation)* | run terminé : branche gardée telle quelle (option 3). Coût accepté : une réponse au menu qui n'est pas un choix termine aussi le run |
+| En fin de branche : un tour qui répond au menu *(décidé pendant l'implémentation, révisé v0.1.1)* | *(v0.1.1)* le run ne se termine que sur merge, push, PR, suppression de branche (`git branch -D`) ou le rapport de garde (`Keeping branch <name>.` / « Je garde la branche… » / « Branche … conservée »). Toute autre réponse (confirmation de `discard`, correction…) laisse le run ouvert, en attente `your turn` (`other`), sans nouvelle notification |
 
 ### 2. L'instrumentation (choix validé par Adrien)
 

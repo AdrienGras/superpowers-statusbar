@@ -36,7 +36,10 @@ export type RunState = {
   finalReview?: FinalReview; finishedAt?: number
   /** A plan was read and listed tasks: until then the tasks are only those the scripts started, their total unknown. */
   isPlanLoaded?: boolean
-  /** In finishing, a turn started while the run waited on the finishing menu: the person answered it. */
+  /**
+   * In finishing, a turn started while the run waited on the finishing menu: the person answered it. Later turn ends
+   * then wait on the person (`other`); the run ends only on a finishing command or the keep report.
+   */
   isMenuAnswered?: boolean
 }
 export type LedgerLine =

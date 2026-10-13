@@ -148,6 +148,32 @@ test('keeping the branch as-is ends the run with no further notification', async
   expect(world.notes).toEqual(['ready for your test · finishing menu'])
 })
 
+const toMenu = async (p: EnginePort) => {
+  const events = [
+    { kind: 'turn-end', answer: 'What would you like to do?', at: 2 },
+    { kind: 'turn-start', at: 3 },
+  ] as const
+  for (const e of events) await observe(p, e, { notifications: true })
+}
+
+test('the discard confirmation keeps the run until the branch is deleted', async () => {
+  const { world, port: p } = port(replay([{ kind: 'skill', skill: 'superpowers:finishing-a-development-branch', at: 1 }]))
+  await toMenu(p)
+  await observe(p, { kind: 'turn-end', answer: "Type 'discard' to confirm.", at: 4 }, { notifications: true })
+  expect(world.stored).toMatchObject({ stage: 'finishing', waiting: { reason: 'other' } })
+  expect(world.notes).toEqual(['ready for your test · finishing menu'])
+  await observe(p, { kind: 'turn-start', at: 5 }, { notifications: true })
+  await observe(p, { kind: 'tool', tool: 'Bash', input: { command: 'git branch -D feat/x' }, at: 6 }, { notifications: true })
+  expect(world.stored?.stage).toBe('done')
+})
+
+test('a reply that is not a choice keeps the run open', async () => {
+  const { world, port: p } = port(replay([{ kind: 'skill', skill: 'superpowers:finishing-a-development-branch', at: 1 }]))
+  await toMenu(p)
+  await observe(p, { kind: 'turn-end', answer: 'Fixed the tests.', at: 4 }, { notifications: true })
+  expect(world.stored).toMatchObject({ stage: 'finishing', waiting: { reason: 'other' } })
+})
+
 // --- hooks ---
 
 test('session.start registers the report tool and the command', async ($, on) => {

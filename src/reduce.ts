@@ -161,18 +161,17 @@ function waitFor(s: RunState): Pick<Waiting, 'reason' | 'task'> | undefined {
       return { reason: 'other' }
     }
     case 'final-review': return { reason: 'other' }
-    case 'finishing': return { reason: 'finishing-menu' }
+    case 'finishing': return { reason: s.isMenuAnswered ? 'other' : 'finishing-menu' }
     case 'done': return undefined
   }
 }
 
 /**
  * A main-loop turn ended: the run waits for Adrien unless a background agent is still working. In finishing, the
- * turn that answered the menu ends the run when no merge, push, PR or discard did already: the branch is kept as-is.
+ * run does not end here: only a merge, push, PR, branch deletion or the keep report (`branch-finished`) ends it.
  */
 function turnEnded(s: RunState, a: ActionOf<'turn-ended'>): RunState {
   const { waiting: _previous, ...rest } = s
-  if (s.stage === 'finishing' && s.isMenuAnswered) return { ...setStage(rest, 'done', a.at), finishedAt: a.at }
   if (Object.values(s.agents).some(r => r.isRunning)) return rest
   const w = waitFor(s)
   return w ? { ...rest, waiting: { ...w, since: a.at } } : rest

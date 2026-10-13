@@ -94,17 +94,13 @@ test('turn-started clears waiting', () => {
   expect(s.waiting).toBeUndefined()
 })
 
-test('a turn that answers the finishing menu without a finishing action ends the run', () => {
+test('a turn that answers the finishing menu without a finishing action leaves the run open', () => {
   const answered = must(run(null, [
     { type: 'stage-entered', stage: 'finishing', at: 1 }, ended(2), { type: 'turn-started', at: 3 },
   ]))
-  const kept = must(reduce(answered, ended(4)))
-  expect(kept).toMatchObject({ stage: 'done', finishedAt: 4 })
-  expect(kept.waiting).toBeUndefined()
-  expect(notificationFor(answered, kept)).toBeUndefined()
-  const later = must(run(kept, [{ type: 'turn-started', at: 5 }, ended(6)]))
-  expect(later).toMatchObject({ stage: 'done', finishedAt: 4 })
-  expect(later.waiting).toBeUndefined()
+  const next = must(reduce(answered, ended(4)))
+  expect(next).toMatchObject({ stage: 'finishing', waiting: { reason: 'other', since: 4 } })
+  expect(next.finishedAt).toBeUndefined()
 })
 
 test('a turn end in finishing before the menu was answered still waits on it', () => {
