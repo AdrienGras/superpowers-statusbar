@@ -86,8 +86,12 @@ const only = (a: Action): Detection => ({ actions: [a], reads: [] })
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
 const isBeforeExec = (s: RunState) => s.stage === 'brainstorm' || s.stage === 'plan'
 
-/** The report of choice 3 (keep), in English or French; the French menu line "Garder la branche" does not match. */
-const KEEP_REPORT = /\bKeeping (?:the )?branch\b|\b(?:gard|conserv)(?:e|erai|ons|erons)\s+la\s+branche\b|\bbranche(?:\s+\S+)?\s+(?:gardée|conservée)/i
+/**
+ * The report of choice 3 (keep), as the skill words it, at the start of a sentence: English "Keeping branch …" as is,
+ * French with a subject ("Je garde la branche …") or "Branche … gardée". Prose that merely mentions keeping the
+ * branch ("rebased, keeping the branch history linear") is no report; nor is the French menu line "Garder la branche".
+ */
+const KEEP_REPORT = /^\s*(?:Keeping branch\b|(?:[Jj]e|[Oo]n|[Nn]ous)\s+(?:gard|conserv)(?:e|erai|ons|erons)\s+la\s+branche\b|[Bb]ranche(?:\s+\S+)?\s+(?:gardée|conservée))/
 
 const NEGATION = /\b(?:not|never|ne|pas|jamais)\b|n't|\bn'/i
 
@@ -116,8 +120,11 @@ export function detect(e: ObservedEvent, s: RunState | null): Detection {
         ? { type: 'plan-loaded', path: e.path, tasks: parsePlan(e.text), at: e.at }
         : { type: 'ledger-loaded', lines: parseLedger(e.text), at: e.at })
     case 'tool': return toolUsed(e, s)
-    case 'spawn':
+    case 'spawn': {
+      // An Agent call seen first already dispatched it, with its role.
+      if (s && Object.hasOwn(s.agents, e.agentId) && s.agents[e.agentId]!.role !== 'unknown') return none()
       return s ? only({ type: 'agent-dispatched', agentId: e.agentId, ...roleOf({ description: e.description, prompt: e.prompt }, s), isRunning: true, at: e.at }) : none()
+    }
   }
 }
 

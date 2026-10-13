@@ -25,6 +25,17 @@ const PEEK: Plugin = {
   },
 }
 
+/** A plugin that spawns a subagent the way any plugin may, with a description a dispatch would have. */
+const SPAWNER: Plugin = {
+  name: 'spawner',
+  register(on) {
+    on('tool.call', { tool: 'mcp__spawner__go' }, async $ => {
+      await $.agent.spawn({ prompt: 'p', description: 'Implement Task 1: Modèle' })
+      return { result: {} }
+    })
+  },
+}
+
 async function runOf($: Engine): Promise<RunState | null> {
   return (await $.tool.call({ tool: 'mcp__peek__run' })).result as RunState | null
 }
@@ -348,6 +359,14 @@ test('a foreground dispatch is seen when it starts', { plugins: [PEEK] }, async 
   const done = await runOf($)
   expect(trailOf(done, '1')?.filter(p => p === 'writing')).toHaveLength(1)
   expect(done?.tasks.find(t => t.n === '1')?.lastStatus).toBe('DONE')
+})
+
+test('a spawn raised by another plugin is not a dispatch', { plugins: [PEEK, SPAWNER] }, async ($, on) => {
+  await execWithPlan($, on, { status: 'async_launched', agentId: 'impl-1' })
+  await $.tool.call({ tool: 'mcp__spawner__go' })
+  const s = await runOf($)
+  expect(s?.agents['impl-1']).toBeUndefined()
+  expect(trailOf(s, '1')?.includes('writing')).toBeFalsy()
 })
 
 test('a background dispatch seen at spawn and at its call counts once', { plugins: [PEEK] }, async ($, on) => {

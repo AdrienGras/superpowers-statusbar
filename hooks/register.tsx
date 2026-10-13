@@ -191,6 +191,8 @@ export const register: Register = (on, options) => {
 
   on('agent.spawn', async ($, e, next) => {
     const r = await next(e)
+    // Only the model's own Agent tool starts a superpowers dispatch: another plugin's `$.agent.spawn` is not one.
+    if (next.origin.plugin !== 'engine') return r
     await seen($, at => spawnEvent(e, r, at) ?? [], options)
     return r
   }).catch(($, e, next) => next(e))

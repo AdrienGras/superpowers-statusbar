@@ -63,7 +63,7 @@ The `SP_STATUSBAR_TRACE` environment variable, when it names a file, makes the m
 
 ## `/sp-progress`
 
-`/sp-progress` opens the pane, or closes it if it is open.
+`/sp-progress` opens the pane, or closes it if it is open. Where the surface cannot show the pane, the command answers "Progress pane cannot be shown here." and the pane is not counted as open.
 
 The pane also opens by itself when the plan's execution starts, but only where it sits beside the transcript (fullscreen terminal). Elsewhere, it waits for the command.
 

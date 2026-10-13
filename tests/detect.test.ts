@@ -279,6 +279,13 @@ type SpawnEvent = Extract<ObservedEvent, { kind: 'spawn' }>
 const spawn = (agentId: string, description: string, extra: Partial<SpawnEvent> = {}): SpawnEvent =>
   ({ kind: 'spawn', agentId, description, prompt: 'p', at: AT, ...extra })
 
+test('an Agent call seen first is not dispatched again by the spawn that follows', () => {
+  const s = state('exec', { agents: { 'impl-1': { role: 'implementer', task: '1', isRunning: true } } })
+  expect(detect(spawn('impl-1', 'Implement Task 1: Modèle'), s).actions).toEqual([])
+  const unknown = state('exec', { agents: { 'impl-1': { role: 'unknown', isRunning: false } } })
+  expect(detect(spawn('impl-1', 'Implement Task 1: Modèle'), unknown).actions).toHaveLength(1)
+})
+
 test('a spawn dispatches the agent, running, with its role', () => {
   const e = spawn('impl-1', 'Implement Task 1: Modèle', { prompt: '…' })
   expect(detect(e, state('exec')).actions).toEqual([
@@ -418,6 +425,10 @@ test('a keep report after the menu was answered finishes the branch', () => {
 test('other answers only end the turn', () => {
   const s = state('finishing', { isMenuAnswered: true })
   for (const answer of [
+    'I rebased onto main, keeping the branch history linear.',
+    'Fixed the tests; keeping the branch up to date with main.',
+    "D'accord, je garde la branche telle quelle et je corrige les tests.",
+    'Keeping the branch feat/x.',
     "This will permanently delete feat/x. Type 'discard' to confirm.",
     'Je corrige les tests.',
     '3. Garder la branche telle quelle',

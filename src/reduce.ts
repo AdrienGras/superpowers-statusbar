@@ -190,7 +190,9 @@ function stageEntered(s: RunState | null, a: ActionOf<'stage-entered'>): RunStat
   if (a.agentId) return subagentStage(s, a, a.agentId)
   if (!s || s.stage === 'done' || rank(a.stage) < rank(s.stage)) return withExecMilestone(newRun(a.stage, a.at, a.mode), a.at)
   const next = advance(s, a.stage, a.at)
-  return withExecMilestone(a.mode ? { ...next, mode: a.mode } : next, a.at)
+  // A menu presented again in finishing is a new question: it waits on the person, with its notification.
+  const base = s.stage === 'finishing' && a.stage === 'finishing' ? { ...next, isMenuAnswered: false } : next
+  return withExecMilestone(a.mode ? { ...base, mode: a.mode } : base, a.at)
 }
 
 function phaseReported(s: RunState, a: ActionOf<'phase-reported'>): RunState {

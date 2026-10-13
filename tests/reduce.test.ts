@@ -497,6 +497,18 @@ test('after the menu was answered a turn end waits on the person, not the menu',
   expect(s.waiting).toEqual({ reason: 'other', since: 4 })
 })
 
+test('a menu presented again after an answer waits on the menu again', () => {
+  const s = must(run(null, [
+    { type: 'stage-entered', stage: 'finishing', at: 1 },
+    { type: 'turn-ended', at: 2 },
+    { type: 'turn-started', at: 3 },
+    { type: 'stage-entered', stage: 'finishing', at: 4 },
+    { type: 'turn-ended', at: 5 },
+  ]))
+  expect(s.isMenuAnswered).toBeFalsy()
+  expect(s.waiting).toEqual({ reason: 'finishing-menu', since: 5 })
+})
+
 test('a turn end while an agent runs clears the previous wait', () => {
   const s = must(run(execRun(), [
     { type: 'turn-ended', at: 30 },

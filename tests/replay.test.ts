@@ -95,7 +95,7 @@ test('an orchestrator runs SDD and finishing inside one subagent', () => {
     bash(`bash ${scripts}/sdd-workspace ${PLAN}`, `${WORKSPACE}\n`, 5, 'orch'),
     agent('Implement Task 1: Modèle Recette', 'You are implementing Task 1: Modèle Recette\n\n## Task Description\n', 'impl-1', 6, 'orch'),
     sk('test-driven-development', 7, 'impl-1'),
-    sk('writing-plans', 8, 'impl-1'),
+    sk('finishing-a-development-branch', 8, 'impl-1'),
     sk('finishing-a-development-branch', 9, 'orch'),
   ]
   const stages: string[] = []
@@ -107,5 +107,7 @@ test('an orchestrator runs SDD and finishing inside one subagent', () => {
   }
   expect(ids.size).toBe(1)
   expect(stages).toEqual(['plan', 'exec', 'finishing'])
+  // The implementer's own finishing skill (event 8) moves nothing: only the orchestrator's (event 9) does.
+  expect(must(replay(events.slice(0, 8), FILES)).stage).toBe('exec')
   expect(must(state).mode).toBe('sdd')
 })

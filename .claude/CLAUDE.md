@@ -46,7 +46,7 @@ src/detectors/sp-7.0.0.ts (détecteurs + MARKERS) ─┤
 claude plugin test .          # npm test — tous les *.test.ts(x)
 npm run typecheck             # tsc du mod + des scripts
 claude plugin validate .      # npm run validate
-npm run contract -- ~/.claude/plugins/cache/superpowers-marketplace/superpowers/7.0.0   # marqueurs superpowers (47 OK)
+npm run contract -- ~/.claude/plugins/cache/superpowers-marketplace/superpowers/7.0.0   # marqueurs superpowers (48 OK)
 npm run local                 # parseurs sur données réelles de fixtures-local/ (n'affiche jamais leur contenu)
 bash scripts/e2e.sh <dossier superpowers> all   # e2e réel claude -p : COÛTE DES TOKENS, plusieurs minutes
 claude --plugin-dir /srv/AdrienGras/superpowers-statusbar   # essai live avec rechargement à chaud
