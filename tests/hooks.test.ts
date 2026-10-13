@@ -82,6 +82,12 @@ test('a Skill call that ran also yields its skill event, first', () => {
   expect(callEvents({ tool: 'Bash', tool_use_id: 'u2', command: 'ls' }, { result: 'x' }, 4)).toHaveLength(1)
 })
 
+test('callEvents keeps the agentId of a subagent\'s Skill call', () => {
+  const e = { tool: 'Skill', tool_use_id: 'u1', skill: 'superpowers:finishing-a-development-branch', agentId: 'a1' } as const
+  expect(callEvents(e, { result: { success: true } }, 4)[0])
+    .toEqual({ kind: 'skill', skill: 'superpowers:finishing-a-development-branch', agentId: 'a1', at: 4 })
+})
+
 // --- observe ---
 
 /** A port over one stored run; `race` lands another writer's value between `update`'s read and its write. */

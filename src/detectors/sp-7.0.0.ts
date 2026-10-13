@@ -89,7 +89,7 @@ const isBeforeExec = (s: RunState) => s.stage === 'brainstorm' || s.stage === 'p
 
 export function detect(e: ObservedEvent, s: RunState | null): Detection {
   switch (e.kind) {
-    case 'skill': return skillUsed(e.skill, e.at)
+    case 'skill': return skillUsed(e.skill, e.at, e.agentId)
     case 'turn-start': return s ? only({ type: 'turn-started', at: e.at }) : none()
     case 'turn-end':
       if (!s) return none()
@@ -105,11 +105,11 @@ export function detect(e: ObservedEvent, s: RunState | null): Detection {
   }
 }
 
-function skillUsed(skill: string, at: number): Detection {
+function skillUsed(skill: string, at: number, agentId?: string): Detection {
   const name = skill.startsWith('superpowers:') ? skill.slice('superpowers:'.length) : skill
   const entry = Object.hasOwn(SKILL_STAGES, name) ? SKILL_STAGES[name] : undefined
   if (!entry) return none()
-  return only({ type: 'stage-entered', stage: entry.stage, ...(entry.mode ? { mode: entry.mode } : {}), at })
+  return only({ type: 'stage-entered', stage: entry.stage, ...(entry.mode ? { mode: entry.mode } : {}), ...(agentId ? { agentId } : {}), at })
 }
 
 type ToolEvent = Extract<ObservedEvent, { kind: 'tool' }>

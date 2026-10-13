@@ -1,6 +1,6 @@
 import { test, expect } from 'claude-code/testing'
 
-import type { RunState } from '../types'
+import type { ObservedEvent, RunState } from '../types'
 import { replay } from '../src/detectors/index.ts'
 import { SDD_RUN, DIRECT_RUN, FILES, PLAN, PLAN2, WORKSPACE, SECOND_PLAN_EVENTS } from './fixtures/runs.ts'
 
@@ -16,7 +16,11 @@ test('replaying an SDD run ends done with every task done and one fix round on t
   expect(s.planPath).toBe(`/repo/${PLAN}`)
   expect(s.tasks.map(t => [t.n, t.status])).toEqual([['1', 'done'], ['2', 'done']])
   expect(s.tasks.map(t => t.fixRounds)).toEqual([0, 1])
-  for (const t of s.tasks) expect(t.doneAt! < t.startedAt!).toBe(false)
+  for (const t of s.tasks) {
+    expect(t.startedAt).toBeDefined()
+    expect(t.doneAt).toBeDefined()
+    expect(t.doneAt!).toBeGreaterThanOrEqual(t.startedAt!)
+  }
   expect(s.tasks[1]!.trail.map(e => e.phase)).toEqual(['brief', 'writing', 'review', 'fix', 're-review', 'done'])
   expect(s.finalReview).toEqual({ phase: 'done', verdict: 'ready' })
   expect(s.decisions.map(d => d.kind)).toEqual(['ruling', 'minor'])
@@ -31,7 +35,9 @@ test('replaying a direct run records red, green, refactor and verify on each tas
   for (const t of s.tasks) {
     expect(t.status).toBe('done')
     expect(t.trail.map(e => e.phase)).toEqual(['brief', 'red', 'green', 'refactor', 'verify', 'done'])
-    expect(t.doneAt! < t.startedAt!).toBe(false)
+    expect(t.startedAt).toBeDefined()
+    expect(t.doneAt).toBeDefined()
+    expect(t.doneAt!).toBeGreaterThanOrEqual(t.startedAt!)
   }
 })
 
@@ -67,4 +73,39 @@ test('a second plan after a finished run is a new run', () => {
   expect(s.stage).toBe('exec')
   expect(s.planPath).toBe(`/repo/${PLAN2}`)
   expect(s.tasks.map(t => t.title)).toEqual(['Modèle Menu'])
+})
+
+test('an orchestrator runs SDD and finishing inside one subagent', () => {
+  const sk = (name: string, at: number, agentId?: string): ObservedEvent =>
+    ({ kind: 'skill', skill: `superpowers:${name}`, ...(agentId ? { agentId } : {}), at })
+  const bash = (command: string, stdout: string, at: number, agentId?: string): ObservedEvent => ({
+    kind: 'tool', tool: 'Bash', input: { command }, result: { stdout, stderr: '', interrupted: false }, text: stdout,
+    ...(agentId ? { agentId } : {}), at,
+  })
+  const agent = (description: string, prompt: string, id: string, at: number, agentId?: string): ObservedEvent => ({
+    kind: 'tool', tool: 'Agent', input: { description, prompt, subagent_type: 'general-purpose' },
+    result: { status: 'async_launched', agentId: id, description, prompt }, ...(agentId ? { agentId } : {}), at,
+  })
+  const scripts = '/home/dev/.claude/plugins/cache/superpowers-marketplace/superpowers/7.0.0/skills/subagent-driven-development/scripts'
+  const events: ObservedEvent[] = [
+    sk('writing-plans', 1),
+    { kind: 'tool', tool: 'Write', input: { file_path: `/repo/${PLAN}`, content: 'x' }, at: 2 },
+    agent('Run the plan with SDD', 'Execute the plan with subagent-driven development.', 'orch', 3),
+    sk('subagent-driven-development', 4, 'orch'),
+    bash(`bash ${scripts}/sdd-workspace ${PLAN}`, `${WORKSPACE}\n`, 5, 'orch'),
+    agent('Implement Task 1: Modèle Recette', 'You are implementing Task 1: Modèle Recette\n\n## Task Description\n', 'impl-1', 6, 'orch'),
+    sk('test-driven-development', 7, 'impl-1'),
+    sk('writing-plans', 8, 'impl-1'),
+    sk('finishing-a-development-branch', 9, 'orch'),
+  ]
+  const stages: string[] = []
+  const ids = new Set<string>()
+  let state: RunState | null = null
+  for (let i = 1; i <= events.length; i++) {
+    state = replay(events.slice(0, i), FILES)
+    if (state) { ids.add(state.id); if (stages.at(-1) !== state.stage) stages.push(state.stage) }
+  }
+  expect(ids.size).toBe(1)
+  expect(stages).toEqual(['plan', 'exec', 'finishing'])
+  expect(must(state).mode).toBe('sdd')
 })

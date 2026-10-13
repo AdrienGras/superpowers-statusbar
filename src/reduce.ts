@@ -1,5 +1,5 @@
 import type {
-  Action, AgentRecord, Milestone, Mode, ReportedPhase, RunState, Stage, TaskEvent, TaskPhase, TaskState, Waiting,
+  Action, AgentRecord, AgentRoleName, Milestone, Mode, ReportedPhase, RunState, Stage, TaskEvent, TaskPhase, TaskState, Waiting,
 } from '../types'
 import { decisionsOf } from './ledger.ts'
 import { isUncleanVerdict, parseReport } from './reports.ts'
@@ -10,7 +10,8 @@ const STAGES: readonly Stage[] = ['brainstorm', 'plan', 'exec', 'final-review', 
 const rank = (stage: Stage) => STAGES.indexOf(stage)
 
 const TASK_PHASES: ReadonlySet<ReportedPhase> = new Set<ReportedPhase>(['red', 'green', 'refactor'])
-const PLAN_COUNT = / steps$/
+/** Roles whose skills and TDD phases belong to their own work, not to the run's progress. */
+const WORKER_ROLES: ReadonlySet<AgentRoleName> = new Set<AgentRoleName>(['implementer', 'reviewer', 're-reviewer', 'final-reviewer', 'builder-check'])
 
 export function newRun(stage: Stage, at: number, mode?: Mode): RunState {
   return {
@@ -19,7 +20,7 @@ export function newRun(stage: Stage, at: number, mode?: Mode): RunState {
   }
 }
 
-/** The active task started most recently; ties go to the latest trail activity, then to plan order. */
+/** The active task activated most recently; ties go to the latest trail activity, then to plan order. */
 export function currentTask(s: RunState): TaskState | undefined {
   let best: TaskState | undefined
   for (const t of s.tasks) {
@@ -30,7 +31,7 @@ export function currentTask(s: RunState): TaskState | undefined {
 }
 
 function compareRecency(a: TaskState, b: TaskState): number {
-  return (a.startedAt ?? 0) - (b.startedAt ?? 0) || lastActivity(a) - lastActivity(b)
+  return (a.activeAt ?? a.startedAt ?? 0) - (b.activeAt ?? b.startedAt ?? 0) || lastActivity(a) - lastActivity(b)
 }
 
 const lastActivity = (t: TaskState) => t.trail[t.trail.length - 1]?.at ?? 0
@@ -78,7 +79,7 @@ const upsertTask = (s: RunState, n: string, f: (t: TaskState) => TaskState) => m
 
 const push = (t: TaskState, e: TaskEvent): TaskState => ({ ...t, trail: [...t.trail, e] })
 
-const activate = (t: TaskState, at: number): TaskState => ({ ...t, status: 'active', startedAt: t.startedAt ?? at })
+const activate = (t: TaskState, at: number): TaskState => ({ ...t, status: 'active', startedAt: t.startedAt ?? at, activeAt: at })
 
 const finish = (t: TaskState, at: number): TaskState => ({ ...push(t, { phase: 'done', at }), status: 'done', doneAt: t.doneAt ?? at })
 
@@ -101,10 +102,12 @@ function needsFix(t: TaskState): boolean {
   return false
 }
 
-function setLastVerdict(t: TaskState, phase: TaskPhase, verdict: string): { task: TaskState; event?: TaskEvent } {
+/** Sets the verdict on the latest event of `phase`, or on the one of `round` when given and present. */
+function setLastVerdict(t: TaskState, phase: TaskPhase, verdict: string, round?: number): { task: TaskState; event?: TaskEvent } {
+  const byRound = round !== undefined && t.trail.some(e => e.phase === phase && e.round === round)
   for (let i = t.trail.length - 1; i >= 0; i--) {
     const e = t.trail[i]!
-    if (e.phase !== phase) continue
+    if (e.phase !== phase || (byRound && e.round !== round)) continue
     const event = { ...e, verdict }
     return { task: { ...t, trail: t.trail.map((x, j) => (j === i ? event : x)) }, event }
   }
@@ -175,7 +178,17 @@ function turnEnded(s: RunState, a: ActionOf<'turn-ended'>): RunState {
   return w ? { ...rest, waiting: { ...w, since: a.at } } : rest
 }
 
-function stageEntered(s: RunState | null, a: ActionOf<'stage-entered'>): RunState {
+/** A skill seen in a subagent only moves a run forward, and only when the agent has no worker role. */
+function subagentStage(s: RunState | null, a: ActionOf<'stage-entered'>, agentId: string): RunState | null {
+  if (!s || s.stage === 'done') return s
+  const role = s.agents[agentId]?.role
+  if ((role && WORKER_ROLES.has(role)) || rank(a.stage) < rank(s.stage)) return s
+  const next = advance(s, a.stage, a.at)
+  return withExecMilestone(a.mode ? { ...next, mode: a.mode } : next, a.at)
+}
+
+function stageEntered(s: RunState | null, a: ActionOf<'stage-entered'>): RunState | null {
+  if (a.agentId) return subagentStage(s, a, a.agentId)
   if (!s || s.stage === 'done' || rank(a.stage) < rank(s.stage)) return withExecMilestone(newRun(a.stage, a.at, a.mode), a.at)
   const next = advance(s, a.stage, a.at)
   return withExecMilestone(a.mode ? { ...next, mode: a.mode } : next, a.at)
@@ -183,8 +196,9 @@ function stageEntered(s: RunState | null, a: ActionOf<'stage-entered'>): RunStat
 
 function phaseReported(s: RunState, a: ActionOf<'phase-reported'>): RunState {
   if (TASK_PHASES.has(a.phase)) {
-    const agentTask = a.agentId ? s.agents[a.agentId]?.task : undefined
-    const n = agentTask && findTask(s, agentTask) ? agentTask : currentTask(s)?.n
+    const rec = a.agentId ? s.agents[a.agentId] : undefined
+    if (rec && rec.role !== 'implementer' && WORKER_ROLES.has(rec.role)) return s
+    const n = rec?.role === 'implementer' && rec.task && findTask(s, rec.task) ? rec.task : currentTask(s)?.n
     return n ? mapTask(s, n, t => push(t, { phase: a.phase as TaskPhase, at: a.at })) : s
   }
   const next = { ...s, stagePhase: a.phase }
@@ -203,8 +217,8 @@ function planLoaded(s: RunState, a: ActionOf<'plan-loaded'>): RunState {
   const next = { ...(s.stage === 'brainstorm' ? setStage(s, 'plan', a.at) : s), planPath: a.path, tasks, isPlanLoaded: a.tasks.length > 0 }
   return addMilestone(
     next,
-    { stage: 'plan', label: `${a.tasks.length} tasks · ${steps} steps`, at: a.at },
-    m => m.stage === 'plan' && PLAN_COUNT.test(m.label),
+    { stage: 'plan', label: `${a.tasks.length} tasks · ${steps} steps`, at: a.at, kind: 'plan-count' },
+    m => m.kind === 'plan-count',
   )
 }
 
@@ -277,7 +291,7 @@ function agentReported(s: RunState, a: ActionOf<'agent-reported'>): RunState {
       const verdict = r.verdict
       if (!verdict || !n) return next
       return mapTask(next, n, t => {
-        const { task, event } = setLastVerdict(t, rec.role === 'reviewer' ? 'review' : 're-review', verdict)
+        const { task, event } = setLastVerdict(t, rec.role === 'reviewer' ? 'review' : 're-review', verdict, rec.role === 're-reviewer' ? rec.round : undefined)
         const isBreaker = rec.role === 're-reviewer' && r.isClean === false && (event?.round ?? 0) >= 5
         return isBreaker ? { ...task, isBreakerTripped: true } : task
       })

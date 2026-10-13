@@ -121,7 +121,7 @@ Superpowers 7.0.0 n'écrit en format fixe que la sortie de ses scripts et une pa
 
 | Event | Ce qu'on en tire |
 |---|---|
-| `tool.call` sur l'outil `Skill` *(décidé pendant l'implémentation)* | Entrée dans un skill de la chaîne (`superpowers:brainstorming`, `writing-plans`, `subagent-driven-development`, `executing-plans`, `finishing-a-development-branch`), compté avant l'appel lui-même ; un appel en erreur ne compte pas. C'est la source principale, voir `skill.prompt` ci-dessous. |
+| `tool.call` sur l'outil `Skill` *(décidé pendant l'implémentation)* | Entrée dans un skill de la chaîne (`superpowers:brainstorming`, `writing-plans`, `subagent-driven-development`, `executing-plans`, `finishing-a-development-branch`), compté avant l'appel lui-même ; un appel en erreur ne compte pas. C'est la source principale, voir `skill.prompt` ci-dessous. Un skill vu dans un subagent (`agentId`) ne crée jamais de run et ne fait jamais reculer l'étape, même depuis `done` ; il la fait avancer, avec son mode, seulement si l'agent n'a pas de rôle reconnu (`implementer`, `reviewer`, `re-reviewer`, `final-reviewer`, `builder-check`) : un agent `other`, `unknown` ou inconnu du run peut le faire, ce qui couvre l'orchestrateur du mode « cheaper orchestration » qui appelle lui-même `subagent-driven-development` puis `finishing-a-development-branch`. Dans un subagent au rôle reconnu, il est ignoré *(v0.1.1)*. |
 | `skill.prompt` *(décidé pendant l'implémentation)* | Observe seulement : même entrée dans un skill, utile pour un `/slash` tapé. Le plugin de sécurité intégré à Claude Code contourne la réécriture `skill.prompt` des plugins installés au niveau utilisateur, et le mod n'écrit plus rien dans le texte des skills ; là où le hook est contourné, un skill tapé en `/slash` passe inaperçu jusqu'au premier appel d'outil reconnaissable. |
 | `tool.call` (avec `await next(e)` pour lire le résultat) | Scripts Bash et leurs sorties, Write de la spec et du plan, dispatchs Agent (rôle du subagent par sa `description`, à défaut par la première ligne de son prompt), reprises `SendMessage` d'un agent connu. Porte `agentId` : on voit aussi ce qui se passe dans les subagents (mode orchestrateur compris). |
 | `turn.start` / `turn.complete` (boucle principale) | La session rend la main : c'est le signal `WAITING`, la raison venant de l'étape en cours ; sauf si un agent lancé en arrière-plan travaille encore. Le tour suivant efface l'attente. `turn.complete` d'un subagent porte son rapport (statut, verdict). |
@@ -160,6 +160,7 @@ Là où superpowers ne laisse aucune trace (phases du brainstorming, rédaction 
 - les valeurs sont fixées par le mod : brainstorming (`conversation`, `design-writing`, `builder-check`, `awaiting-approval`), plan (`drafting`, `self-review`), TDD (`red`, `green`, `refactor`). Le dispatch d'un subagent builder check pendant le brainstorming vaut aussi la phase `builder-check`.
 
 La description ne change aucune consigne d'un skill ; elle demande seulement de signaler. Si le modèle oublie un signalement, l'affichage garde la phase précédente ou montre `?` ; il n'invente rien. Constaté en e2e : en exécution directe, le contrôleur signale rarement RED/GREEN lui-même ; les implémenteurs SDD le font.
+- *(v0.1.1)* Routage des phases TDD : un `red`, `green` ou `refactor` signalé par un agent enregistré comme `implementer` va à sa tâche ; par un agent d'un autre rôle reconnu (relecteur, etc.), il est ignoré ; par un agent `other`, `unknown` ou inconnu, ou par la boucle principale, il va à la tâche courante. La tâche courante est la tâche active activée en dernier (`activeAt` : dernier lancement de son implémenteur ou de son script), puis la dernière activité de sa trace. Le jalon « N tasks · M steps » est identifié par son `kind: 'plan-count'` et remplacé à chaque rechargement du plan ; le verdict d'un re-reviewer en retard va à l'événement `re-review` de son round.
 
 ### 3. Le disque
 
@@ -226,7 +227,7 @@ disque (plan, progress.md)  ─────────────────�
 - Fix rounds 1 à 3 : reprise par `SendMessage`, pas de nouvel `Agent`.
 - Dispatchs groupés (plusieurs tâches d'un coup) et tâches scindées après un `BLOCKED` : le nombre de tâches peut changer en cours de route.
 - Workspace supprimé en fin de run, ou par `git clean -fdx` ; worktree : le workspace vit dans le worktree, pas forcément dans le dossier de démarrage de la session (d'où la lecture du plan relatif depuis la racine du workspace).
-- Skills lancés à l'intérieur d'un subagent (TDD dans un implémenteur) : visibles via `agentId`, à rattacher à la bonne tâche.
+- Skills lancés à l'intérieur d'un subagent (TDD dans un implémenteur) : visibles via `agentId` ; ils ne déplacent pas le run (règle de la table ci-dessus, *v0.1.1*), et les phases TDD vont à la tâche de l'implémenteur.
 - API des mods en accès anticipé : elle bouge entre les versions de Claude Code.
 
 ## Plus tard

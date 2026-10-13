@@ -67,6 +67,12 @@ test('messagesToEvents emits a skill event for Skill tool uses', () => {
   expect(messagesToEvents([{ role: 'assistant', text: '', toolUses: [{ ...skill, isError: true }] }])).toHaveLength(1)
 })
 
+test('messagesToEvents keeps the agentId of a subagent\'s Skill call', () => {
+  const skill = { tool: 'Skill', input: { skill: 'superpowers:finishing-a-development-branch' }, agentId: 'a1' }
+  expect(messagesToEvents([{ role: 'assistant', text: '', toolUses: [skill] }])[0])
+    .toStrictEqual({ kind: 'skill', skill: 'superpowers:finishing-a-development-branch', agentId: 'a1', at: 0 })
+})
+
 test('rebuild of a transcript without superpowers activity stays null', { plugins: [PEEK] }, async ($, on) => {
   engine(on)
   on('session.messages', () => ({ value: [

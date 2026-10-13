@@ -85,7 +85,7 @@ test('brainstorm milestones and phases', () => {
   const p = reduce(s, PLAN)
   expect(must(p).stage).toBe('plan')
   expect(must(p).planPath).toBe('/p/plan.md')
-  expect(must(p).milestones).toContainEqual({ stage: 'plan', label: '2 tasks · 5 steps', at: 20 })
+  expect(must(p).milestones).toContainEqual({ stage: 'plan', label: '2 tasks · 5 steps', at: 20, kind: 'plan-count' })
 })
 
 test('a builder check dispatched in brainstorm shows as its phase until a phase is reported', () => {
@@ -131,7 +131,7 @@ test('plan-loaded replaces tasks and keeps done ones', () => {
   expect(task(s, '2').title).toBe('Repository v2')
   expect(task(s, '2').startedAt).toBe(41)
   expect(task(s, '3')).toEqual({ n: '3', title: 'Vue', steps: 1, status: 'todo', fixRounds: 0, trail: [] })
-  expect(must(s).milestones.filter(m => m.stage === 'plan')).toEqual([{ stage: 'plan', label: '3 tasks · 8 steps', at: 50 }])
+  expect(must(s).milestones.filter(m => m.stage === 'plan')).toEqual([{ stage: 'plan', label: '3 tasks · 8 steps', at: 50, kind: 'plan-count' }])
 })
 
 test('only a plan read with tasks makes the task total known', () => {
@@ -146,7 +146,7 @@ test('only a plan read with tasks makes the task total known', () => {
 test('task-started adds a task missing from the plan', () => {
   const s = reduce(execRun(), { type: 'task-started', task: '9', at: 30 })
   expect(task(s, '9')).toEqual({
-    n: '9', title: '?', steps: 0, status: 'active', startedAt: 30, fixRounds: 0, trail: [{ phase: 'brief', at: 30 }],
+    n: '9', title: '?', steps: 0, status: 'active', startedAt: 30, activeAt: 30, fixRounds: 0, trail: [{ phase: 'brief', at: 30 }],
   })
 })
 
@@ -383,4 +383,104 @@ test('parseReport reads each report format', () => {
   expect(parseReport('final-reviewer', '**Ready to merge?** No')).toEqual({ verdict: 'no', isClean: false })
   expect(parseReport('implementer', 'nothing here')).toEqual({})
   expect(parseReport('other', '**Status:** DONE')).toEqual({})
+})
+
+// --- v0.1.1: current task, TDD routing, milestones, verdicts, subagent skills ---
+
+const dispatchedAs = (agentId: string, role: 'implementer' | 'reviewer' | 're-reviewer', n: string, at: number, round?: number): Action =>
+  ({ type: 'agent-dispatched', agentId, role, task: n, ...(round !== undefined ? { round } : {}), isRunning: true, at })
+
+test('the current task is the one activated last', () => {
+  const s = run(execRun(), [
+    { type: 'task-started', task: '1', at: 10 },
+    { type: 'task-started', task: '2', at: 20 },
+    dispatchedAs('impl-1b', 'implementer', '1', 30),
+  ])
+  expect(currentTask(must(s))?.n).toBe('1')
+})
+
+test('TDD phases follow an implementer\'s task only', () => {
+  const base = run(execRun(), [
+    { type: 'task-started', task: '1', at: 10 },
+    { type: 'task-started', task: '2', at: 20 },
+    dispatchedAs('impl-2', 'implementer', '2', 21),
+    dispatchedAs('rev-2', 'reviewer', '2', 22),
+    { type: 'task-started', task: '1', at: 30 },
+  ])
+  expect(currentTask(must(base))?.n).toBe('1')
+  const phases = (s: RunState | null, n: string) => task(s, n).trail.map(e => e.phase)
+  const own = run(base, [{ type: 'phase-reported', phase: 'red', agentId: 'impl-2', at: 40 }])
+  expect(phases(own, '2')).toContain('red')
+  expect(phases(own, '1')).not.toContain('red')
+  const reviewer = run(base, [{ type: 'phase-reported', phase: 'red', agentId: 'rev-2', at: 40 }])
+  expect(phases(reviewer, '2')).not.toContain('red')
+  expect(phases(reviewer, '1')).not.toContain('red')
+  const unknown = run(base, [{ type: 'phase-reported', phase: 'red', agentId: 'nobody', at: 40 }])
+  expect(phases(unknown, '1')).toContain('red')
+  expect(phases(unknown, '2')).not.toContain('red')
+})
+
+test('a reloaded plan replaces its count milestone', () => {
+  const s = run(execRun(), [{
+    type: 'plan-loaded', path: '/p/plan.md', at: 30,
+    tasks: [{ n: '1', title: 'Modèle', steps: 3 }, { n: '2', title: 'Repository', steps: 2 }, { n: '3', title: 'Vue', steps: 4 }],
+  }])
+  const counts = must(s).milestones.filter(m => m.kind === 'plan-count')
+  expect(counts).toHaveLength(1)
+  expect(counts[0]!.label).toBe('3 tasks · 9 steps')
+})
+
+test('a late re-review verdict lands on its own round', () => {
+  const s = run(execRun(), [
+    { type: 'task-started', task: '1', at: 10 },
+    dispatchedAs('rr-1', 're-reviewer', '1', 31, 1),
+    dispatchedAs('rr-2', 're-reviewer', '1', 32, 2),
+    { type: 'agent-reported', agentId: 'rr-1', answer: '### Verdict\n\n**Fix round:** Findings remain open\n', at: 40 },
+  ])
+  const events = task(s, '1').trail.filter(e => e.phase === 're-review')
+  expect(events.find(e => e.round === 1)?.verdict).toBeDefined()
+  expect(events.find(e => e.round === 2)?.verdict).toBeUndefined()
+})
+
+test('workspace-removed outside exec and final review changes nothing', () => {
+  const s = must(run(null, [{ type: 'stage-entered', stage: 'brainstorm', at: 1 }]))
+  expect(reduce(s, { type: 'workspace-removed', at: 5 })).toBe(s)
+})
+
+test('a subagent skill never starts a run', () => {
+  const entered: Action = { type: 'stage-entered', stage: 'exec', mode: 'sdd', agentId: 'a', at: 5 }
+  expect(reduce(null, entered)).toBeNull()
+  const done = must(run(null, [{ type: 'stage-entered', stage: 'finishing', at: 1 }, { type: 'branch-finished', at: 2 }]))
+  expect(reduce(done, entered)).toBe(done)
+})
+
+test('a subagent skill never moves the run back', () => {
+  const s = must(execRun())
+  const next = must(reduce(s, { type: 'stage-entered', stage: 'brainstorm', agentId: 'orch', at: 50 }))
+  expect(next.id).toBe(s.id)
+  expect(next.stage).toBe('exec')
+})
+
+test('a free subagent moves the run forward', () => {
+  const planned = must(run(null, [
+    { type: 'stage-entered', stage: 'plan', at: 1 },
+    { type: 'agent-dispatched', agentId: 'orch', role: 'other', isRunning: true, at: 2 },
+  ]))
+  const next = must(reduce(planned, { type: 'stage-entered', stage: 'exec', mode: 'sdd', agentId: 'orch', at: 3 }))
+  expect(next.stage).toBe('exec')
+  expect(next.mode).toBe('sdd')
+  expect(next.id).toBe(planned.id)
+  const stranger = must(reduce(planned, { type: 'stage-entered', stage: 'exec', mode: 'sdd', agentId: 'unseen', at: 3 }))
+  expect(stranger.stage).toBe('exec')
+  expect(stranger.id).toBe(planned.id)
+})
+
+test('a subagent with a known role does not move the run', () => {
+  for (const role of ['implementer', 'reviewer', 're-reviewer', 'final-reviewer', 'builder-check'] as const) {
+    const s = must(run(null, [
+      { type: 'stage-entered', stage: 'plan', at: 1 },
+      { type: 'agent-dispatched', agentId: 'ag', role, isRunning: true, at: 2 },
+    ]))
+    expect(reduce(s, { type: 'stage-entered', stage: 'finishing', agentId: 'ag', at: 3 })).toBe(s)
+  }
 })

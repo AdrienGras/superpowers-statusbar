@@ -14,6 +14,8 @@ export type TaskState = PlanTask & {
   status: 'todo' | 'active' | 'done'
   startedAt?: number; doneAt?: number
   fixRounds: number; trail: TaskEvent[]
+  /** When the task was last activated (its implementer dispatched or its script run); `startedAt` is the first time. */
+  activeAt?: number
   implementerId?: string; lastStatus?: ImplementerStatus; isBreakerTripped?: boolean
 }
 export type AgentRoleName = 'implementer' | 'reviewer' | 're-reviewer' | 'final-reviewer' | 'builder-check' | 'other' | 'unknown'
@@ -21,7 +23,7 @@ export type AgentRecord = { role: AgentRoleName; task?: string; round?: number; 
 export type WaitReason = 'brainstorm-question' | 'spec-approval' | 'execution-choice' | 'blocked' | 'breaker' | 'finishing-menu' | 'other'
 export type Waiting = { reason: WaitReason; task?: string; since: number }
 export type Decision = { kind: 'ruling' | 'minor' | 'parked'; task?: string; text: string }
-export type Milestone = { stage: Stage; label: string; at: number }
+export type Milestone = { stage: Stage; label: string; at: number; kind?: 'plan-count' }
 export type FinalReview = { phase: 'review' | 'fixes' | 'done'; verdict?: string }
 export type RunState = {
   id: string; startedAt: number; stage: Stage; stagePhase?: ReportedPhase
@@ -44,14 +46,14 @@ export type LedgerLine =
   | { kind: 'parked'; task: string; text: string }
   | { kind: 'ruling'; task?: string; text: string }
 export type ObservedEvent =
-  | { kind: 'skill'; skill: string; at: number }
+  | { kind: 'skill'; skill: string; agentId?: string; at: number }
   | { kind: 'tool'; tool: string; input: Record<string, unknown>; text?: string; result?: unknown; isError?: boolean; agentId?: string; at: number }
   | { kind: 'turn-start'; at: number }
   | { kind: 'turn-end'; agentId?: string; answer: string; at: number }
   | { kind: 'file'; role: 'plan' | 'ledger'; path: string; text: string; at: number }
 export type FileRequest = { role: 'plan' | 'ledger'; path: string }
 export type Action =
-  | { type: 'stage-entered'; stage: Stage; mode?: Mode; at: number }
+  | { type: 'stage-entered'; stage: Stage; mode?: Mode; agentId?: string; at: number }
   | { type: 'phase-reported'; phase: ReportedPhase; agentId?: string; at: number }
   | { type: 'spec-written'; path: string; at: number }
   | { type: 'plan-loaded'; path: string; tasks: PlanTask[]; at: number }

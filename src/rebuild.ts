@@ -1,4 +1,5 @@
 import type { ObservedEvent, RunState } from '../types'
+import { skillOfCall } from './skill-call.ts'
 
 /** The part of a `SessionMessage` the rebuild reads; structural, so `src/` imports nothing from `'claude-code'`. */
 export type TranscriptMessage = {
@@ -23,8 +24,8 @@ export function messagesToEvents(messages: readonly TranscriptMessage[]): Observ
   const events: ObservedEvent[] = []
   for (const m of messages) {
     for (const u of m.toolUses) {
-      const skill = u.tool === 'Skill' && !u.isError ? u.input.skill : undefined
-      if (typeof skill === 'string') events.push({ kind: 'skill', skill, at: 0 })
+      const skill = skillOfCall(u, 0)
+      if (skill) events.push(skill)
       events.push({
         kind: 'tool',
         tool: u.tool,

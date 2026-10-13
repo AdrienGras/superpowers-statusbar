@@ -356,3 +356,9 @@ test('sdd-workspace after a finished run starts a new exec run', () => {
     expect(detect(e, state('done')).actions[0]).toEqual({ type: 'stage-entered', stage: 'exec', at: AT })
   }
 })
+
+test('a subagent\'s skill carries its agentId', () => {
+  const at = 7
+  expect(detect({ kind: 'skill', skill: 'superpowers:finishing-a-development-branch', agentId: 'a1', at }, null).actions)
+    .toEqual([{ type: 'stage-entered', stage: 'finishing', agentId: 'a1', at }])
+})

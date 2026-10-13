@@ -1,6 +1,7 @@
 import type { ToolCallInput, ToolCallResult } from 'claude-code'
 
 import type { ObservedEvent } from '../types'
+import { skillOfCall } from '../src/skill-call.ts'
 
 /** Keys `tool.call` carries beside the tool's own arguments. */
 const ENVELOPE: ReadonlySet<string> = new Set(['tool', 'tool_use_id', 'agentId', 'requestMeta', 'consent'])
@@ -24,6 +25,6 @@ export function toolEvent(e: ToolCallInput, ran: ToolCallResult, at: number): Ex
  */
 export function callEvents(e: ToolCallInput, ran: ToolCallResult, at: number): ObservedEvent[] {
   const call = toolEvent(e, ran, at)
-  const skill = e.tool === 'Skill' && !call.isError ? e.skill : undefined
-  return typeof skill === 'string' ? [{ kind: 'skill', skill, at }, call] : [call]
+  const skill = skillOfCall(call, at)
+  return skill ? [skill, call] : [call]
 }
