@@ -1,5 +1,5 @@
 import type {
-  Action, AgentRecord, Milestone, Mode, ReportedPhase, RunState, Stage, TaskEvent, TaskPhase, TaskState,
+  Action, AgentRecord, Milestone, Mode, ReportedPhase, RunState, Stage, TaskEvent, TaskPhase, TaskState, Waiting,
 } from '../types'
 import { decisionsOf } from './ledger.ts'
 import { isUncleanVerdict, parseReport } from './reports.ts'
@@ -138,10 +138,37 @@ export function reduce(s: RunState | null, a: Action): RunState | null {
     case 'workspace-removed':
       return s.stage === 'final-review' || s.stage === 'exec' ? { ...s, finalReview: { ...s.finalReview, phase: 'done' } } : s
     case 'branch-finished': return { ...setStage(s, 'done'), finishedAt: a.at }
-    case 'turn-started':
-    case 'turn-ended':
-      return s
+    case 'turn-started': {
+      if (!s.waiting) return s
+      const { waiting: _cleared, ...rest } = s
+      return rest
+    }
+    case 'turn-ended': return turnEnded(s, a)
   }
+}
+
+function waitFor(s: RunState): Pick<Waiting, 'reason' | 'task'> | undefined {
+  switch (s.stage) {
+    case 'brainstorm': return { reason: s.stagePhase === 'awaiting-approval' ? 'spec-approval' : 'brainstorm-question' }
+    case 'plan': return { reason: s.tasks.length > 0 ? 'execution-choice' : 'other' }
+    case 'exec': {
+      const t = currentTask(s)
+      if (t?.isBreakerTripped) return { reason: 'breaker', task: t.n }
+      if (t?.lastStatus === 'BLOCKED') return { reason: 'blocked', task: t.n }
+      return { reason: 'other' }
+    }
+    case 'final-review': return { reason: 'other' }
+    case 'finishing': return { reason: 'finishing-menu' }
+    case 'done': return undefined
+  }
+}
+
+/** A main-loop turn ended: the run waits for Adrien unless a background agent is still working. */
+function turnEnded(s: RunState, a: ActionOf<'turn-ended'>): RunState {
+  const { waiting: _previous, ...rest } = s
+  if (Object.values(s.agents).some(r => r.isRunning)) return rest
+  const w = waitFor(s)
+  return w ? { ...rest, waiting: { ...w, since: a.at } } : rest
 }
 
 function stageEntered(s: RunState | null, a: ActionOf<'stage-entered'>): RunState {
