@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "test": "claude plugin test .",
-    "typecheck": "tsc -p .",
+    "typecheck": "tsc -p . && tsc -p tsconfig.scripts.json",
+    "contract": "node scripts/contract-check.ts",
     "validate": "claude plugin validate ."
   },
   "devDependencies": {
