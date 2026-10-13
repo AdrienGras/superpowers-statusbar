@@ -50,15 +50,18 @@ for mode in "${MODES[@]}"; do
   # ses hooks (une réécriture des commandes y changeait ce que voient les permissions), ses plugins installés (dont
   # un autre superpowers) et son CLAUDE.md ; l'authentification reste. Seuls le mod et la version testée sont chargés.
   # Pas de bypassPermissions : un agent sans surveillance avec toutes les permissions sur la machine, c'est trop large.
-  # acceptEdits (Read, Write, Edit dans le dossier du run) et une liste d'outils limitée à ce que le run demande :
-  # les scripts de la version de superpowers testée, node, git, npm test, et la suppression du workspace du plan
-  # (`rm -rf <workspace>`, chemin exact). Toute autre commande Bash est refusée ; le modèle passe alors par Write/Edit.
-  # Les règles de chemin acceptent `..` : elles cadrent un modèle de bonne foi, elles ne sont pas une frontière de sécurité.
+  # acceptEdits (écritures dans le dossier du run seulement ; Write et Edit ne sont pas ajoutés, ils ouvriraient
+  # tous les chemins), Read (lecture seule, partout : les skills sont hors du dossier) et une liste d'outils limitée
+  # à ce que le run demande : les scripts de la version de superpowers testée, `node --test`, git, npm test, et la
+  # suppression du workspace du plan (`rm -rf <workspace>`, chemin exact). Les autres commandes Bash sont refusées.
+  # Ce n'est PAS une frontière de sécurité : `npm test` exécute un package.json et des tests que le modèle écrit,
+  # `node --test` aussi, git accepte `-C <autre dépôt>` et des alias `-c alias.x='!cmd'`, et les règles de chemin
+  # acceptent `..`. La liste guide un modèle coopératif ; le run doit être traité comme non sandboxé.
   workspace=.superpowers/sdd/2026-01-01-text-utils
   allowed=(
-    Read Write Edit Skill Agent Task SendMessage ToolSearch mcp__superpowers-statusbar__report_phase
+    Read Skill Agent Task SendMessage ToolSearch mcp__superpowers-statusbar__report_phase
     "Bash(bash $SP/skills/*)" "Bash($SP/skills/*)"
-    "Bash(node:*)" "Bash(git:*)" "Bash(npm test)" "Bash(npm test *)"
+    "Bash(node --test*)" "Bash(git:*)" "Bash(npm test)" "Bash(npm test *)"
     "Bash(rm -rf $workspace)" "Bash(rm -rf $repo/$workspace)"
   )
 
@@ -86,7 +89,8 @@ for mode in "${MODES[@]}"; do
     cp "$trace" "$ROOT/fixtures-local/e2e/$VERSION-$mode-$STAMP.jsonl"
   fi
 
-  for p in "${problems[@]}"; do echo "✗ $p"; done
+  # `${a[@]+…}` : sous bash 3.2 et `set -u`, un tableau vide développé tel quel est une variable non définie.
+  for p in ${problems[@]+"${problems[@]}"}; do echo "✗ $p"; done
   if node "$ROOT/scripts/e2e-check.ts" "$trace" "$mode" "$TASKS" && [ ${#problems[@]} -eq 0 ]; then
     echo "E2E $mode : OK"
   else

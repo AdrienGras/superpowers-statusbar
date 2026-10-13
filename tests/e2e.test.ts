@@ -67,6 +67,13 @@ test('checkTrace requires the final finishing-menu wait once finishing is reache
     .toEqual({ errors: ["la dernière entrée n'attend pas finishing-menu (aucune attente)"], warnings: [] })
 })
 
+test('checkTrace requires finishing after final-review', () => {
+  const swap = { 'final-review': 'finishing', finishing: 'final-review' } as const
+  const finishingFirst = traceOf(untilFinishingMenu(SDD_RUN)).map(e =>
+    e.stage === 'final-review' || e.stage === 'finishing' ? { ...e, stage: swap[e.stage] } : e)
+  expect(checkTrace(finishingFirst, 'sdd', 2)).toEqual({ errors: ['étape finishing absente après final-review'], warnings: [] })
+})
+
 test('checkTrace only warns when the run never reached finishing', () => {
   const removed = SDD_RUN.findIndex(e => e.kind === 'tool' && e.tool === 'Bash' && String(e.input.command).startsWith('rm -rf'))
   expect(checkTrace(traceOf(SDD_RUN.slice(0, removed + 1)), 'sdd', 2))

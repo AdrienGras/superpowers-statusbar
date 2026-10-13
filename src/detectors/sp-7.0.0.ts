@@ -238,7 +238,7 @@ function roleOf(input: Record<string, unknown>, s: RunState): Role {
   // Real runs also word the final review their own way, in English or French: any review once every task is
   // done, except the dispatch that fixes its findings.
   const isAfterTasks = s.stage === 'final-review' || (s.stage === 'exec' && s.tasks.length > 0 && s.tasks.every(t => t.status === 'done'))
-  if (isAfterTasks && /review|revue/i.test(description) && !/\bfix|correct/i.test(description)) return { role: 'final-reviewer' }
+  if (isAfterTasks && /review|revue/i.test(description) && !/\bfix|correct|corrig/i.test(description)) return { role: 'final-reviewer' }
   return { role: 'other' }
 }
 

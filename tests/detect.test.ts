@@ -222,6 +222,7 @@ test('detect takes any review dispatched once every task is done as the final re
   expect(role('Revue finale de la branche', allDone)).toEqual({ role: 'final-reviewer' })
   expect(role('Final-review fix wave', state('final-review'))).toEqual({ role: 'other' })
   expect(role('Correction des points de la revue finale', state('final-review'))).toEqual({ role: 'other' })
+  expect(role('Corriger les retours de revue finale', state('final-review'))).toEqual({ role: 'other' })
   expect(role('Whole-branch code review', midExec)).toEqual({ role: 'other' })
   expect(role('Whole-branch code review', state('exec'))).toEqual({ role: 'other' })
   expect(role('Review Task 2 (spec + quality)', midExec)).toEqual({ role: 'reviewer', task: '2' })

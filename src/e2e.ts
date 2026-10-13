@@ -14,7 +14,8 @@ function inOrder<T>(seq: readonly T[], wanted: readonly T[]): boolean {
 
 /**
  * Checks a trace written by the mod during a real run of the e2e plan (`SP_STATUSBAR_TRACE`). Only order and
- * presence count, never how many entries there are. Errors: the stages exec then final-review; `expectedTasks`
+ * presence count, never how many entries there are. Errors: the stages exec then final-review, and finishing after
+ * final-review when the run reached it; `expectedTasks`
  * distinct tasks reaching `done`; in `sdd`, each done task through `writing` then `review`; in `direct`, each done
  * task through `verify`; once the run reached finishing, a last entry waiting on the finishing menu. Warnings: in
  * `direct`, no task through `red` then `green`; a run that never reached finishing. Task phases come from the
@@ -25,13 +26,19 @@ export function checkTrace(entries: readonly TraceEntry[], mode: Mode, expectedT
   const warnings: string[] = []
 
   let from = 0
+  let isInOrder = true
   for (const [k, stage] of STAGES.entries()) {
     const i = entries.findIndex((e, j) => j >= from && e.stage === stage)
     if (i < 0) {
       errors.push(k === 0 ? `étape ${stage} absente` : `étape ${stage} absente après ${STAGES[k - 1]}`)
+      isInOrder = false
       break
     }
     from = i
+  }
+  const isFinishingReached = entries.some(e => e.stage === 'finishing')
+  if (isInOrder && isFinishingReached && !entries.some((e, j) => j >= from && e.stage === 'finishing')) {
+    errors.push('étape finishing absente après final-review')
   }
 
   const trails = new Map<string, TaskPhase[]>()
@@ -48,7 +55,7 @@ export function checkTrace(entries: readonly TraceEntry[], mode: Mode, expectedT
     warnings.push('aucune tâche ne passe par red puis green')
   }
 
-  if (entries.some(e => e.stage === 'finishing')) {
+  if (isFinishingReached) {
     const last = entries[entries.length - 1]
     if (last?.waiting !== 'finishing-menu') {
       errors.push(`la dernière entrée n'attend pas finishing-menu (${last?.waiting ?? 'aucune attente'})`)

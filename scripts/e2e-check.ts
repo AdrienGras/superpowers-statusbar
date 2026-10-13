@@ -16,7 +16,13 @@ try {
   console.log(`✗ trace absente : ${path}`)
   process.exit(1)
 }
-const entries = text.split('\n').filter(line => line.trim() !== '').map(line => JSON.parse(line) as TraceEntry)
+let entries: TraceEntry[]
+try {
+  entries = text.split('\n').filter(line => line.trim() !== '').map(line => JSON.parse(line) as TraceEntry)
+} catch {
+  console.log(`✗ trace illisible (JSON invalide) : ${path}`)
+  process.exit(1)
+}
 
 // Only errors fail the run: warnings describe the model's flow, which the mod does not control.
 const { errors, warnings } = checkTrace(entries, mode satisfies Mode, Number(tasks))
