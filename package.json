@@ -1,0 +1,15 @@
+{
+  "name": "superpowers-statusbar",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "claude plugin test .",
+    "typecheck": "tsc -p .",
+    "validate": "claude plugin validate ."
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2"
+  }
+}

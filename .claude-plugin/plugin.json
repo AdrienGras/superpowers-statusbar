@@ -1,0 +1,14 @@
+{
+  "name": "superpowers-statusbar",
+  "version": "0.1.0",
+  "description": "Live progress of a superpowers run: a band above the prompt, a side pane and notifications.",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "notifications": {
+      "type": "boolean",
+      "title": "Notifications",
+      "description": "Notify when the run waits for you (plan ready, blocked task, finishing menu).",
+      "default": true
+    }
+  }
+}
