@@ -18,6 +18,8 @@ try {
 }
 const entries = text.split('\n').filter(line => line.trim() !== '').map(line => JSON.parse(line) as TraceEntry)
 
-const problems = checkTrace(entries, mode satisfies Mode, Number(tasks))
-for (const p of problems) console.log(`✗ ${p}`)
-process.exit(problems.length === 0 ? 0 : 1)
+// Only errors fail the run: warnings describe the model's flow, which the mod does not control.
+const { errors, warnings } = checkTrace(entries, mode satisfies Mode, Number(tasks))
+for (const e of errors) console.log(`✗ ${e}`)
+for (const w of warnings) console.log(`⚠ ${w}`)
+process.exit(errors.length === 0 ? 0 : 1)

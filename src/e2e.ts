@@ -1,6 +1,9 @@
 import type { Mode, Stage, TaskPhase, TraceEntry } from '../types'
 
-const STAGES: readonly Stage[] = ['exec', 'final-review', 'finishing']
+const STAGES: readonly Stage[] = ['exec', 'final-review']
+
+/** What a trace says about the mod (`errors`) and about the model's flow, which the mod does not control (`warnings`). */
+export type TraceCheck = { errors: string[]; warnings: string[] }
 
 /** Whether `wanted` appears in `seq` in this order, other items allowed in between. */
 function inOrder<T>(seq: readonly T[], wanted: readonly T[]): boolean {
@@ -11,19 +14,21 @@ function inOrder<T>(seq: readonly T[], wanted: readonly T[]): boolean {
 
 /**
  * Checks a trace written by the mod during a real run of the e2e plan (`SP_STATUSBAR_TRACE`). Only order and
- * presence count, never how many entries there are: the stages exec, final-review and finishing in that order;
- * `expectedTasks` distinct tasks reaching `done`; in `sdd`, each done task through `writing` then `review`; in
- * `direct`, each done task through `verify`, and at least one through `red` then `green`; a last entry waiting on
- * the finishing menu. Task phases come from the entries' `phases`. Returns the problems, in French; none means OK.
+ * presence count, never how many entries there are. Errors: the stages exec then final-review; `expectedTasks`
+ * distinct tasks reaching `done`; in `sdd`, each done task through `writing` then `review`; in `direct`, each done
+ * task through `verify`; once the run reached finishing, a last entry waiting on the finishing menu. Warnings: in
+ * `direct`, no task through `red` then `green`; a run that never reached finishing. Task phases come from the
+ * entries' `phases`. Errors are in French; the finishing warning is worded as the controller ruled.
  */
-export function checkTrace(entries: readonly TraceEntry[], mode: Mode, expectedTasks: number): string[] {
-  const problems: string[] = []
+export function checkTrace(entries: readonly TraceEntry[], mode: Mode, expectedTasks: number): TraceCheck {
+  const errors: string[] = []
+  const warnings: string[] = []
 
   let from = 0
   for (const [k, stage] of STAGES.entries()) {
     const i = entries.findIndex((e, j) => j >= from && e.stage === stage)
     if (i < 0) {
-      problems.push(k === 0 ? `étape ${stage} absente` : `étape ${stage} absente après ${STAGES[k - 1]}`)
+      errors.push(k === 0 ? `étape ${stage} absente` : `étape ${stage} absente après ${STAGES[k - 1]}`)
       break
     }
     from = i
@@ -34,18 +39,22 @@ export function checkTrace(entries: readonly TraceEntry[], mode: Mode, expectedT
     for (const p of e.phases ?? []) trails.set(p.task, [...(trails.get(p.task) ?? []), p.phase])
   }
   const done = [...trails].filter(([, trail]) => trail.includes('done'))
-  if (done.length !== expectedTasks) problems.push(`${done.length} tâche(s) terminée(s) sur ${expectedTasks} attendue(s)`)
+  if (done.length !== expectedTasks) errors.push(`${done.length} tâche(s) terminée(s) sur ${expectedTasks} attendue(s)`)
   for (const [task, trail] of done) {
-    if (mode === 'sdd' && !inOrder(trail, ['writing', 'review', 'done'])) problems.push(`tâche ${task} : pas de writing puis review avant done`)
-    if (mode === 'direct' && !inOrder(trail, ['verify', 'done'])) problems.push(`tâche ${task} : pas de verify avant done`)
+    if (mode === 'sdd' && !inOrder(trail, ['writing', 'review', 'done'])) errors.push(`tâche ${task} : pas de writing puis review avant done`)
+    if (mode === 'direct' && !inOrder(trail, ['verify', 'done'])) errors.push(`tâche ${task} : pas de verify avant done`)
   }
   if (mode === 'direct' && ![...trails.values()].some(trail => inOrder(trail, ['red', 'green']))) {
-    problems.push('aucune tâche ne passe par red puis green')
+    warnings.push('aucune tâche ne passe par red puis green')
   }
 
-  const last = entries[entries.length - 1]
-  if (last?.waiting !== 'finishing-menu') {
-    problems.push(`la dernière entrée n'attend pas finishing-menu (${last ? (last.waiting ?? 'aucune attente') : 'trace vide'})`)
+  if (entries.some(e => e.stage === 'finishing')) {
+    const last = entries[entries.length - 1]
+    if (last?.waiting !== 'finishing-menu') {
+      errors.push(`la dernière entrée n'attend pas finishing-menu (${last?.waiting ?? 'aucune attente'})`)
+    }
+  } else {
+    warnings.push('run never reached finishing (model behaviour)')
   }
-  return problems
+  return { errors, warnings }
 }

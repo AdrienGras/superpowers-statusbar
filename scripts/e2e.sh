@@ -35,7 +35,7 @@ jq '{ enabledPlugins: ((.enabledPlugins // {}) | with_entries(select(.key | star
 prompt() {
   local skill=subagent-driven-development
   [ "$1" = direct ] && skill=executing-plans
-  echo "Execute the plan $PLAN with superpowers:$skill. Work on the current branch; do not create a worktree."
+  echo "Execute the plan $PLAN with superpowers:$skill. Work on the current branch; do not create a worktree. Invoke superpowers scripts by their absolute path, never through a shell variable."
 }
 
 failed=0
@@ -55,12 +55,13 @@ for mode in "${MODES[@]}"; do
   # acceptEdits (Read, Write, Edit dans le dossier du run) et une liste d'outils limitée à ce que le run demande :
   # les scripts de la version de superpowers testée, node, git, npm test, et la suppression du workspace du plan
   # (`rm -rf <workspace>`, chemin exact). Toute autre commande Bash est refusée ; le modèle passe alors par Write/Edit.
+  # `rtk git` : un hook utilisateur (RTK) réécrit `git …` en `rtk git …` avant le contrôle des permissions.
   # Les règles de chemin acceptent `..` : elles cadrent un modèle de bonne foi, elles ne sont pas une frontière de sécurité.
   workspace=.superpowers/sdd/2026-01-01-text-utils
   allowed=(
     Read Write Edit Skill Agent Task SendMessage ToolSearch mcp__superpowers-statusbar__report_phase
     "Bash(bash $SP/skills/*)" "Bash($SP/skills/*)"
-    "Bash(node:*)" "Bash(git:*)" "Bash(npm test)" "Bash(npm test *)"
+    "Bash(node:*)" "Bash(git:*)" "Bash(rtk git:*)" "Bash(npm test)" "Bash(npm test *)"
     "Bash(rm -rf $workspace)" "Bash(rm -rf $repo/$workspace)"
   )
 
