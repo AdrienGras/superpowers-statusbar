@@ -91,6 +91,16 @@ const isBeforeExec = (s: RunState) => s.stage === 'brainstorm' || s.stage === 'p
 /** The report of choice 3 (keep), in English or French; the French menu line "Garder la branche" does not match. */
 const KEEP_REPORT = /\bKeeping (?:the )?branch\b|\b(?:gard|conserv)(?:e|erai|ons|erons)\s+la\s+branche\b|\bbranche(?:\s+\S+)?\s+(?:gardée|conservée)/i
 
+const NEGATION = /\b(?:not|never|ne|pas|jamais)\b|n't|\bn'/i
+
+/** A keep report is a statement: its sentence is no question and has no negation up to the match. */
+function isKeepReport(answer: string): boolean {
+  return (answer.match(/[^.!?\n]+[.!?]*/g) ?? []).some(sentence => {
+    const hit = KEEP_REPORT.exec(sentence)
+    return !!hit && !/\?\s*$/.test(sentence.trim()) && !NEGATION.test(sentence.slice(0, hit.index + hit[0].length))
+  })
+}
+
 export function detect(e: ObservedEvent, s: RunState | null): Detection {
   switch (e.kind) {
     case 'skill': return skillUsed(e.skill, e.at, e.agentId)
@@ -98,7 +108,7 @@ export function detect(e: ObservedEvent, s: RunState | null): Detection {
     case 'turn-end':
       if (!s) return none()
       if (e.agentId) return only({ type: 'agent-reported', agentId: e.agentId, answer: e.answer, at: e.at })
-      return only(s.stage === 'finishing' && s.isMenuAnswered && KEEP_REPORT.test(e.answer)
+      return only(s.stage === 'finishing' && s.isMenuAnswered && isKeepReport(e.answer)
         ? { type: 'branch-finished', at: e.at }
         : { type: 'turn-ended', at: e.at })
     case 'file':

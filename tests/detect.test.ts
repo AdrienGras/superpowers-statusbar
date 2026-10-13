@@ -369,6 +369,8 @@ test('a keep report after the menu was answered finishes the branch', () => {
     'Keeping branch feat/x. Worktree preserved at /w.',
     'Je garde la branche feat/x telle quelle.',
     'Branche feat/x conservée.',
+    'Je garderai la branche feat/x.',
+    'Nous conservons la branche.',
   ]) {
     expect(detect({ kind: 'turn-end', answer, at: AT }, s).actions).toEqual([{ type: 'branch-finished', at: AT }])
   }
@@ -380,6 +382,10 @@ test('other answers only end the turn', () => {
     "This will permanently delete feat/x. Type 'discard' to confirm.",
     'Je corrige les tests.',
     '3. Garder la branche telle quelle',
+    'Do you want me to keep the branch? Keeping branch feat/x?',
+    'Tu veux que je garde la branche ?',
+    "I'm not keeping the branch.",
+    'Je ne garde pas la branche.',
   ]) {
     expect(detect({ kind: 'turn-end', answer, at: AT }, s).actions).toEqual([{ type: 'turn-ended', at: AT }])
   }
