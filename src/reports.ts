@@ -24,9 +24,10 @@ export function parseReport(role: AgentRoleName, answer: string): Report {
       return m ? { status: m[1] as ImplementerStatus } : {}
     }
     case 'reviewer': {
-      if (answer.includes('❌')) return unclean('needs fixes')
+      // The Task quality line rules: a ❌ may only mark a point the reviewer could not verify. Without that line,
+      // any ❌ counts as a finding.
       const m = TASK_QUALITY.exec(answer)
-      if (!m) return {}
+      if (!m) return answer.includes('❌') ? unclean('needs fixes') : {}
       return m[1] === 'Approved' ? clean('ok') : unclean('needs fixes')
     }
     case 're-reviewer': {

@@ -361,7 +361,12 @@ test('parseReport reads each report format', () => {
   expect(parseReport('implementer', 'x\n- **Status:** DONE_WITH_CONCERNS\n')).toEqual({ status: 'DONE_WITH_CONCERNS' })
   expect(parseReport('reviewer', '**Task quality:** Approved')).toEqual({ verdict: 'ok', isClean: true })
   expect(parseReport('reviewer', '**Task quality:** Needs fixes')).toEqual({ verdict: 'needs fixes', isClean: false })
-  expect(parseReport('reviewer', 'Spec: ❌ missing\n**Task quality:** Approved')).toEqual({ verdict: 'needs fixes', isClean: false })
+  // The Task quality line rules; a ❌ counts only when the report has none.
+  const approvedWithUnverifiable = '### Spec\n\n**Cannot verify:**\n- ❌ no access to the staging database\n\n**Task quality:** Approved\n'
+  expect(parseReport('reviewer', approvedWithUnverifiable)).toEqual({ verdict: 'ok', isClean: true })
+  expect(parseReport('reviewer', 'Spec: ❌ missing\n**Task quality:** Needs fixes')).toEqual({ verdict: 'needs fixes', isClean: false })
+  expect(parseReport('reviewer', 'Spec: ❌ missing')).toEqual({ verdict: 'needs fixes', isClean: false })
+  expect(parseReport('reviewer', 'Spec: ✅ all there')).toEqual({})
   expect(parseReport('re-reviewer', '**Fix round:** All findings addressed, no new Critical/Important breakage')).toEqual({ verdict: 'ok', isClean: true })
   expect(parseReport('re-reviewer', '**Fix round:** Findings remain open — x')).toEqual({ verdict: 'open', isClean: false })
   expect(parseReport('final-reviewer', '**Ready to merge?** Yes')).toEqual({ verdict: 'ready', isClean: true })

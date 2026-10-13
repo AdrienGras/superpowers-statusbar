@@ -127,7 +127,7 @@ function toolUsed(e: ToolEvent, s: RunState | null): Detection {
     case 'Agent': agentDispatched(e, s, d); break
     case 'SendMessage': {
       const to = str(e.input.to)
-      if (to && s.agents[to]) d.actions.push({ type: 'agent-resumed', agentId: to, at: e.at })
+      if (to && Object.hasOwn(s.agents, to)) d.actions.push({ type: 'agent-resumed', agentId: to, at: e.at })
       break
     }
   }

@@ -128,7 +128,7 @@ function execBand(s: RunState, now: number, parts: Parts): Segment[] {
   const total = s.tasks.length
   const done = s.tasks.filter(t => t.status === 'done').length
   const cur = currentTask(s)
-  const filled = total ? Math.round((done / total) * BAR_CELLS) : 0
+  const filled = total ? Math.floor((done / total) * BAR_CELLS) : 0
   const counter = counterOf(s)
 
   const head: Segment[] = [

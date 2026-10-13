@@ -37,6 +37,13 @@ test('band shows stage, bar, counter, task title, phase, fix round and elapsed',
     '● exec SDD ▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱ 7/15 · Task 7: Parser du ledger · review · fix 2/5 · 42m')
 })
 
+test('band bar stays short of full while a task remains', () => {
+  const s = execRun(30, 31)
+  const filled = bandSegments(s, NOW, 200).filter(g => g.text.startsWith('▰')).map(g => g.text).join('')
+  expect(filled).toBe('▰'.repeat(14))
+  expect(text(bandSegments(s, NOW, 200))).toContain('▱')
+})
+
 test('band drops elapsed, then title, then bar as columns shrink', () => {
   const s = seven()
   const full = text(bandSegments(s, NOW, 200))

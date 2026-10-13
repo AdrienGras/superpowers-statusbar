@@ -254,6 +254,9 @@ test('detect resumes a known agent on SendMessage', () => {
   const s = state('exec', { agents: { a1: { role: 'implementer', task: '2', isRunning: false } } })
   expect(detect(tool('SendMessage', { to: 'a1', message: 'fix it' }), s).actions).toEqual([{ type: 'agent-resumed', agentId: 'a1', at: AT }])
   expect(detect(tool('SendMessage', { to: 'zz', message: 'hi' }), s).actions).toEqual([])
+  for (const to of ['constructor', 'toString', '__proto__']) {
+    expect(detect(tool('SendMessage', { to, message: 'hi' }), s).actions).toEqual([])
+  }
 })
 
 test('detect maps turn ends to agent reports or main turn ends', () => {
