@@ -14,7 +14,7 @@ const PLAN_COUNT = / steps$/
 
 export function newRun(stage: Stage, at: number, mode?: Mode): RunState {
   return {
-    id: `run-${at}`, startedAt: at, stage, ...(mode ? { mode } : {}),
+    id: `run-${at}`, startedAt: at, stage, stageStartedAt: { [stage]: at }, ...(mode ? { mode } : {}),
     tasks: [], milestones: [], agents: {}, decisions: [],
   }
 }
@@ -37,13 +37,13 @@ const lastActivity = (t: TaskState) => t.trail[t.trail.length - 1]?.at ?? 0
 
 // --- run helpers ---
 
-function setStage(s: RunState, stage: Stage): RunState {
+function setStage(s: RunState, stage: Stage, at: number): RunState {
   if (stage === s.stage) return s
   const { stagePhase: _dropped, ...rest } = s
-  return { ...rest, stage }
+  return { ...rest, stage, stageStartedAt: { ...s.stageStartedAt, [stage]: at } }
 }
 
-const advance = (s: RunState, stage: Stage) => (rank(stage) > rank(s.stage) ? setStage(s, stage) : s)
+const advance = (s: RunState, stage: Stage, at: number) => (rank(stage) > rank(s.stage) ? setStage(s, stage, at) : s)
 
 function addMilestone(s: RunState, m: Milestone, supersedes?: (old: Milestone) => boolean): RunState {
   if (s.milestones.some(o => o.stage === m.stage && o.label === m.label)) return s
@@ -137,7 +137,7 @@ export function reduce(s: RunState | null, a: Action): RunState | null {
     case 'ledger-loaded': return ledgerLoaded(s, a)
     case 'workspace-removed':
       return s.stage === 'final-review' || s.stage === 'exec' ? { ...s, finalReview: { ...s.finalReview, phase: 'done' } } : s
-    case 'branch-finished': return { ...setStage(s, 'done'), finishedAt: a.at }
+    case 'branch-finished': return { ...setStage(s, 'done', a.at), finishedAt: a.at }
     case 'turn-started': {
       if (!s.waiting) return s
       const { waiting: _cleared, ...rest } = s
@@ -173,7 +173,7 @@ function turnEnded(s: RunState, a: ActionOf<'turn-ended'>): RunState {
 
 function stageEntered(s: RunState | null, a: ActionOf<'stage-entered'>): RunState {
   if (!s || s.stage === 'done' || rank(a.stage) < rank(s.stage)) return withExecMilestone(newRun(a.stage, a.at, a.mode), a.at)
-  const next = advance(s, a.stage)
+  const next = advance(s, a.stage, a.at)
   return withExecMilestone(a.mode ? { ...next, mode: a.mode } : next, a.at)
 }
 
@@ -196,7 +196,7 @@ function planLoaded(s: RunState, a: ActionOf<'plan-loaded'>): RunState {
     return { ...p, status: 'todo', fixRounds: 0, trail: [] }
   })
   const steps = a.tasks.reduce((sum, t) => sum + t.steps, 0)
-  const next = { ...(s.stage === 'brainstorm' ? setStage(s, 'plan') : s), planPath: a.path, tasks }
+  const next = { ...(s.stage === 'brainstorm' ? setStage(s, 'plan', a.at) : s), planPath: a.path, tasks }
   return addMilestone(
     next,
     { stage: 'plan', label: `${a.tasks.length} tasks · ${steps} steps`, at: a.at },
@@ -228,9 +228,11 @@ function agentDispatched(s: RunState, a: ActionOf<'agent-dispatched'>): RunState
         upsertTask(s, n, t => push(t, { phase: 're-review', at: a.at, round: a.round ?? t.fixRounds })),
         a.agentId, record(n))
     case 'final-reviewer':
-      return setAgent({ ...advance(s, 'final-review'), finalReview: { phase: 'review' } }, a.agentId, record(a.task))
-    case 'builder-check':
-      return setAgent(addMilestone(s, { stage: 'brainstorm', label: 'builder check', at: a.at }), a.agentId, record(a.task))
+      return setAgent({ ...advance(s, 'final-review', a.at), finalReview: { phase: 'review' } }, a.agentId, record(a.task))
+    case 'builder-check': {
+      const checking: RunState = s.stage === 'brainstorm' ? { ...s, stagePhase: 'builder-check' } : s
+      return setAgent(addMilestone(checking, { stage: 'brainstorm', label: 'builder check', at: a.at }), a.agentId, record(a.task))
+    }
     case 'other': {
       const fr = s.finalReview
       if (s.stage === 'final-review' && fr?.phase === 'review' && isUncleanVerdict(fr.verdict)) {

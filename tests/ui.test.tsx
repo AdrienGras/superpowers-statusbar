@@ -1,6 +1,6 @@
 import { test, expect, mock } from 'claude-code/testing'
-import type { Engine, MockClock, Plugin } from 'claude-code/testing'
-import type { On, RenderViewport } from 'claude-code'
+import type { ElementQuery, Engine, FoundElement, MockClock, Plugin } from 'claude-code/testing'
+import type { On, RenderSurface, RenderViewport } from 'claude-code'
 
 import type { ObservedEvent } from '../types'
 import { PLAN, PLAN_TEXT, SDD_RUN, SDD_RUN_LEDGER, WORKSPACE } from './fixtures/runs.ts'
@@ -110,7 +110,17 @@ const CLOSER: Plugin = {
 const bandProps = { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: COLUMNS, scroll: { offset: 0, bodyRows: 10 }, view: {} }
 const paneProps = { title: 'superpowers', isFocused: false, bodyColumns: 50, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 36 }, view: {} }
 
-const mountBand = ($: Engine, surface: (typeof SURFACES)[number] | 'vscode' | 'mobile', viewport: RenderViewport = DOCKED) =>
+const mountPane = <S extends RenderSurface>($: Engine, surface: S) =>
+  $.ui.mount({ plugin: PLUGIN, surface, component: 'Pane', requestId: 'sp-progress', props: paneProps, viewport: DOCKED })
+
+/** The row a line of the pane is drawn in: the outermost Box whose text starts with `start`. */
+async function row(ui: { find: (q: ElementQuery) => Promise<FoundElement | undefined> }, start: string) {
+  const found = await ui.find({ type: 'Box', text: new RegExp(`^${start.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`) })
+  if (!found) throw new Error(`no row starting ${start}`)
+  return found
+}
+
+const mountBand = <S extends RenderSurface>($: Engine, surface: S, viewport: RenderViewport = DOCKED) =>
   $.ui.mount({ plugin: PLUGIN, surface, component: 'AbovePrompt', props: bandProps, viewport })
 
 test('band draws nothing without a run', async ($, on) => {
@@ -129,7 +139,7 @@ test('band draws the running line', async ($, on) => {
   for (const surface of SURFACES) {
     const ui = await mountBand($, surface)
     expect(await ui.find({ type: 'Text', text: /\/2/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /Task 2/ })).toMatchObject({ props: { color: 'blue' } })
+    expect((await ui.find({ type: 'Text', text: /Task 2/ }))?.props).toEqual({})
     expect(await ui.find({ type: 'Text', text: 'engine' })).toBeUndefined()
     await ui.unmount()
   }
@@ -142,23 +152,45 @@ test('band and pane move their elapsed time on every minute while the run is qui
   const band = await mountBand($, 'terminal')
   const pane = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'Pane', requestId: 'sp-progress', props: paneProps, viewport: DOCKED })
   const before = (await band.find({ type: 'Text', text: elapsed }))?.text
-  const eta = (await pane.find({ type: 'Text', text: /^avg / }))?.text
+  const eta = (await pane.find({ type: 'Text', text: /^ETA / }))?.text
   expect(before).toBeDefined()
   await clock.advance(20 * 60_000)
   const after = (await band.find({ type: 'Text', text: elapsed }))?.text
   expect(after).toBeDefined()
   expect(after).not.toBe(before)
-  expect((await pane.find({ type: 'Text', text: /^avg / }))?.text).not.toBe(eta)
+  expect(eta).toBeDefined()
+  expect((await pane.find({ type: 'Text', text: /^ETA / }))?.text).not.toBe(eta)
   await band.unmount()
   await pane.unmount()
 })
 
-test('band draws T\'ATTEND when waiting', async ($, on) => {
+test('band draws one continuous WAITING block in the theme colours when waiting', async ($, on) => {
   const { clock, world } = engine(on)
   await replay($, clock, world, PLAN_READY)
   for (const surface of SURFACES) {
     const ui = await mountBand($, surface)
-    expect(await ui.find({ type: 'Text', text: 'WAITING' })).toMatchObject({ props: { bold: true, color: 'black' } })
+    expect((await ui.find({ type: 'Text', text: 'WAITING' }))?.props)
+      .toEqual({ backgroundColor: 'warning', color: 'inverseText', bold: true })
+    const texts = await ui.findAll({ type: 'Text' })
+    expect(texts.map(t => t.text).join('')).toBe(' WAITING · plan ready (2 tasks) · pick an execution mode ')
+    for (const t of texts) expect(t.props, t.text).toMatchObject({ backgroundColor: 'warning', color: 'inverseText' })
+    expect(await ui.find({ type: 'Client' })).toBeUndefined()
+    await ui.unmount()
+  }
+})
+
+test('band spins its running mark in the warning colour on the terminal and the desktop', async ($, on) => {
+  const { clock, world } = engine(on)
+  await replay($, clock, world, MID_TASK_2)
+  for (const surface of SURFACES) {
+    const ui = await mountBand($, surface)
+    expect(await ui.find({ type: 'Client', key: 'spinner' })).toMatchObject({ props: { module: 'hooks/spinner.tsx' } })
+    expect(await ui.find({ type: 'Text', text: '●' })).toBeUndefined()
+    expect(await ui.find({ type: 'Text', in: 'spinner' })).toMatchObject({ text: '⠋', props: { color: 'warning' } })
+    await ui.advance(100)
+    expect((await ui.find({ type: 'Text', in: 'spinner' }))?.text).toBe('⠙')
+    await ui.advance(900)
+    expect((await ui.find({ type: 'Text', in: 'spinner' }))?.text).toBe('⠋')
     await ui.unmount()
   }
 })
@@ -185,7 +217,7 @@ test('pane shows the five block titles for a run with decisions and an estimate'
       expect(await ui.find({ type: 'Text', text: title }), title).toBeDefined()
     }
     expect(await ui.find({ type: 'Text', text: /^Ruling/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /brief → implementing/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'Task 2 · Repository de recettes' })).toBeDefined()
     await ui.unmount()
   }
 })
@@ -232,4 +264,65 @@ test('entering exec leaves the pane closed where the band saw no docking surface
   await band.unmount()
   await replay($, clock, world, MID_TASK_2)
   expect(world.opened).toEqual([])
+})
+
+
+test('pane draws one line per stage, mark and label in the colour of where it stands, durations on the right', async ($, on) => {
+  const { clock, world } = engine(on)
+  await replay($, clock, world, MID_TASK_2)
+  for (const surface of SURFACES) {
+    const ui = await mountPane($, surface)
+    const done = await row(ui, '✓ brainstorming')
+    expect(done).toMatchObject({ props: { flexDirection: 'row', width: 50, justifyContent: 'space-between' } })
+    expect(done.text).toMatch(/^✓ brainstorming \d+m$/)
+    expect(done.children).toMatchObject([
+      { children: [{ props: { color: 'success' }, children: ['✓'] }, { props: { color: 'success' }, children: [' brainstorming'] }] },
+      { children: [{ props: { color: 'subtle' } }] },
+    ])
+    expect(await ui.find({ type: 'Text', text: '  spec written' })).toMatchObject({ props: { color: 'subtle' } })
+    expect(await ui.find({ type: 'Text', text: '  2 tasks · 5 steps' })).toMatchObject({ props: { color: 'subtle' } })
+    const exec = await row(ui, ' exec SDD')
+    expect(exec.children).toMatchObject([{ children: [
+      { type: 'Client', props: { key: 'stage-spinner' } }, { props: { color: 'warning' } }, { props: { color: 'subtle' }, children: [' · 1/2'] },
+    ] }])
+    const todo = await row(ui, '○ final review')
+    expect(todo.children).toMatchObject([{ children: [{ type: 'Text', children: ['○'] }, { props: { wrap: 'truncate-end' } }] }])
+    expect(JSON.stringify(todo.children)).not.toContain('color')
+    expect(todo.text).toBe('○ final review')
+    await ui.unmount()
+  }
+})
+
+test('pane draws tasks and the current task as lists, the running ones spinning', async ($, on) => {
+  const { clock, world } = engine(on)
+  await replay($, clock, world, MID_TASK_2)
+  for (const surface of SURFACES) {
+    const ui = await mountPane($, surface)
+    const finished = await row(ui, '✓ 1. Modèle Recette')
+    expect(finished.text).toMatch(/ \d+m$/)
+    expect(finished.props).toMatchObject({ justifyContent: 'space-between' })
+    expect((await row(ui, ' 2. Repository de recettes')).children)
+      .toMatchObject([{ children: [{ type: 'Client', props: { key: 'task-spinner-2' } }, { props: { color: 'warning' } }] }])
+    expect((await row(ui, '✓ brief')).children)
+      .toMatchObject([{ children: [{ props: { color: 'success' } }, { props: { color: 'success' } }] }])
+    expect((await row(ui, ' implementing')).children)
+      .toMatchObject([{ children: [{ type: 'Client', props: { key: 'phase-spinner' } }, { props: { color: 'warning' } }] }])
+    expect((await row(ui, '○ review')).text).toBe('○ review')
+    expect((await row(ui, '○ done')).text).toBe('○ done')
+    expect(await ui.find({ type: 'Text', in: 'phase-spinner' })).toMatchObject({ text: '⠋', props: { color: 'warning' } })
+    expect(await ui.find({ type: 'Text', text: 'Ruling · ' })).toMatchObject({ props: { color: 'subtle' } })
+    await ui.unmount()
+  }
+})
+
+test('pane draws a still mark where the surface has no spinner', async ($, on) => {
+  const { clock, world } = engine(on)
+  await replay($, clock, world, MID_TASK_2)
+  for (const surface of ['vscode', 'mobile'] as const) {
+    const ui = await mountPane($, surface)
+    expect(await ui.find({ type: 'Client' })).toBeUndefined()
+    expect((await row(ui, '● implementing')).children)
+      .toMatchObject([{ children: [{ props: { color: 'warning' }, children: ['●'] }, { props: { color: 'warning' } }] }])
+    await ui.unmount()
+  }
 })

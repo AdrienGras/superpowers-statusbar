@@ -1,17 +1,27 @@
-import type { ReportedPhase, RunState, Stage, TaskEvent, TaskState } from '../types'
+import type { ReportedPhase, RunState, Stage, TaskEvent, TaskPhase, TaskState } from '../types'
 import { currentTask } from './reduce.ts'
 import { waitText } from './notify.ts'
 
-export type Tone = 'normal' | 'dim' | 'ok' | 'active' | 'todo' | 'wait' | 'accent'
-export type Segment = { text: string; tone: Tone; isBold?: boolean }
+/**
+ * What a piece of text means, which the render hooks turn into the theme's colours: `ok` done, `active` under way,
+ * `subtle` secondary (durations, separators, verdicts, tags), `wait` the highlighted waiting block.
+ */
+export type Tone = 'normal' | 'subtle' | 'ok' | 'active' | 'wait'
+/** `isSpinner`: the mark of something running, which a surface that can animates in place of its text. */
+export type Segment = { text: string; tone: Tone; isBold?: boolean; isSpinner?: boolean }
+
+/** Where a stage, task or task phase stands. */
+export type Mark = 'done' | 'active' | 'todo' | 'skipped'
 
 export type PaneModel = {
   title: string
   elapsed?: string
-  stages: { label: string; status: 'done' | 'active' | 'todo' | 'skipped'; detail?: string }[]
+  /** `duration` once the stage is finished and its span known; `milestones` under brainstorm and plan only. */
+  stages: { label: string; status: Mark; detail?: string; duration?: string; milestones: string[] }[]
   tasks: { n: string; title: string; status: TaskState['status']; duration?: string; fixRounds: number }[]
   hiddenTasks: number
-  current?: { n: string; trail: string[] }
+  /** The current task's phases passed (`done`), under way (`active`) and still expected (`todo`), in order. */
+  current?: { n: string; title: string; trail: { label: string; status: Exclude<Mark, 'skipped'>; verdict?: string }[] }
   decisions: RunState['decisions']
   eta?: string
 }
@@ -19,6 +29,7 @@ export type PaneModel = {
 const BAR_CELLS = 15
 const MAX_FIX_ROUNDS = 5
 const STAGES: readonly Stage[] = ['brainstorm', 'plan', 'exec', 'final-review', 'finishing', 'done']
+/** Rows the pane spends beside the task list, before milestones and the current task's trail. */
 const PANE_CHROME_ROWS = 14
 const MIN_TASK_ROWS = 3
 
@@ -91,7 +102,9 @@ export function estimate(s: RunState, now: number): { avgMs: number; remainingMs
 
 // --- band ---
 
-const sep = (text: string): Segment => ({ text, tone: 'dim' })
+const sep = (text: string): Segment => ({ text, tone: 'subtle' })
+/** The band's lead while the run works. */
+const RUNNING: Segment = { text: '●', tone: 'active', isSpinner: true }
 const elapsedOf = (s: RunState, now: number) => (s.startedAt ? formatDuration(now - s.startedAt) : undefined)
 
 function doneBand(s: RunState, now: number): Segment[] {
@@ -100,8 +113,8 @@ function doneBand(s: RunState, now: number): Segment[] {
   const end = s.finishedAt ?? now
   const parts = [`${s.tasks.length} tasks`, `${fixRounds} fix rounds`, `${aside} set aside`]
   const elapsed = s.startedAt ? formatDuration(end - s.startedAt) : undefined
-  if (elapsed) parts.push(elapsed)
-  return [{ text: '✓ done', tone: 'ok', isBold: true }, ...parts.flatMap(p => [sep(' · '), { text: p, tone: 'normal' as const }])]
+  const tail: Segment[] = elapsed ? [sep(' · '), { text: elapsed, tone: 'subtle' }] : []
+  return [{ text: '✓ done', tone: 'ok', isBold: true }, ...parts.flatMap(p => [sep(' · '), { text: p, tone: 'normal' as const }]), ...tail]
 }
 
 type Parts = { isElapsed: boolean; isTitle: boolean; isBar: boolean }
@@ -119,12 +132,12 @@ function execBand(s: RunState, now: number, parts: Parts): Segment[] {
   const counter = counterOf(s)
 
   const head: Segment[] = [
-    { text: '●', tone: 'active' }, sep(' '),
+    RUNNING, sep(' '),
     { text: stageLabel(s), tone: 'normal' }, sep(' '),
   ]
   const bar: Segment[] = !parts.isBar ? [] : [
     { text: '▰'.repeat(filled), tone: 'ok' },
-    { text: '▱'.repeat(BAR_CELLS - filled), tone: 'todo' },
+    { text: '▱'.repeat(BAR_CELLS - filled), tone: 'normal' },
     sep(' '),
   ]
   const tail: Segment[] = [{ text: `${counter}/${total}`, tone: 'normal', isBold: true }]
@@ -132,8 +145,8 @@ function execBand(s: RunState, now: number, parts: Parts): Segment[] {
   if (cur) {
     const last = cur.trail[cur.trail.length - 1]
     more.push([
-      { text: `Task ${cur.n}`, tone: 'accent' },
-      ...(parts.isTitle ? [{ text: ` « ${cur.title} »`, tone: 'accent' as const }] : []),
+      { text: `Task ${cur.n}`, tone: 'normal' },
+      ...(parts.isTitle ? [{ text: ` « ${cur.title} »`, tone: 'normal' as const }] : []),
     ])
     more.push([{ text: last ? phaseLabel(last) : '?', tone: 'normal' }])
     if (cur.fixRounds > 0 && last?.phase !== 'fix') {
@@ -141,19 +154,19 @@ function execBand(s: RunState, now: number, parts: Parts): Segment[] {
     }
   }
   const elapsed = parts.isElapsed ? elapsedOf(s, now) : undefined
-  if (elapsed) more.push([{ text: elapsed, tone: 'dim' }])
+  if (elapsed) more.push([{ text: elapsed, tone: 'subtle' }])
   return [...head, ...bar, ...tail, ...more.flatMap(m => [sep(' · '), ...m])]
 }
 
 function simpleBand(s: RunState, now: number): Segment[] {
-  const out: Segment[] = [{ text: '●', tone: 'active' }, sep(' '), { text: stageLabel(s), tone: 'normal' }]
+  const out: Segment[] = [RUNNING, sep(' '), { text: stageLabel(s), tone: 'normal' }]
   let phase: string | undefined
   if (s.stagePhase) phase = REPORTED_LABELS[s.stagePhase]
   else if (s.stage === 'plan' && s.tasks.length > 0) phase = `${s.tasks.length} tasks`
   if (phase) out.push(sep(' · '), { text: phase, tone: 'normal' })
   if (s.stage !== 'brainstorm' && s.stage !== 'plan') {
     const elapsed = elapsedOf(s, now)
-    if (elapsed) out.push(sep(' · '), { text: elapsed, tone: 'dim' })
+    if (elapsed) out.push(sep(' · '), { text: elapsed, tone: 'subtle' })
   }
   return out
 }
@@ -176,14 +189,25 @@ function fitExecBand(s: RunState, now: number, columns: number): Segment[] {
   return band
 }
 
+/** The waiting block's text around the reason: ` WAITING · <reason> `, all of it highlighted. */
+const WAIT_BADGE = 'WAITING'
+const WAIT_CHROME = ` ${WAIT_BADGE} ·  `.length
+
+/**
+ * One highlighted block, ` WAITING · <reason> `, its spaces included, the reason cut with `…` to fit; in exec, the
+ * counter follows outside the block when the whole reason and the counter fit.
+ */
 function waitingBand(s: RunState, columns: number): Segment[] {
-  const badge = 'WAITING '
   const message = waitText(s)
-  const room = columns - badge.length
+  const room = columns - WAIT_CHROME
   const shown = message.length <= room ? message : `${message.slice(0, Math.max(0, room - 1))}…`
-  const out: Segment[] = [{ text: 'WAITING', tone: 'wait', isBold: true }, sep(' '), { text: shown, tone: 'wait' }]
+  const out: Segment[] = [
+    { text: ' ', tone: 'wait' },
+    { text: WAIT_BADGE, tone: 'wait', isBold: true },
+    { text: ` · ${shown} `, tone: 'wait' },
+  ]
   const counter = `${counterOf(s)}/${s.tasks.length}`
-  if (s.stage === 'exec' && shown === message && badge.length + message.length + 3 + counter.length <= columns) {
+  if (s.stage === 'exec' && shown === message && WAIT_CHROME + message.length + 3 + counter.length <= columns) {
     out.push(sep(' · '), { text: counter, tone: 'normal', isBold: true })
   }
   return out
@@ -197,10 +221,26 @@ export function bandSegments(s: RunState, now: number, columns: number): Segment
 
 // --- pane ---
 
-function visibleWindow(total: number, rows: number, centre: number): { start: number; end: number } {
-  const size = Math.min(total, Math.max(MIN_TASK_ROWS, rows - PANE_CHROME_ROWS))
+/** The phases a task is expected to go through, by mode; fix and re-review rounds are shown as they happen. */
+const SDD_PHASES: readonly TaskPhase[] = ['brief', 'writing', 'review', 'done']
+const INLINE_PHASES: readonly TaskPhase[] = ['brief', 'red', 'green', 'refactor', 'verify', 'done']
+/** Where a phase outside the SDD sequence stands in it: TDD steps inside implementing, fix rounds inside review. */
+const SDD_PLACE: Partial<Record<TaskPhase, TaskPhase>> = { red: 'writing', green: 'writing', refactor: 'writing', fix: 'review', 're-review': 'review' }
+const MILESTONE_STAGES: ReadonlySet<Stage> = new Set<Stage>(['brainstorm', 'plan'])
+
+/** The tasks shown: `taskRows` of them (at least MIN_TASK_ROWS) around `centre`. */
+function visibleWindow(total: number, taskRows: number, centre: number): { start: number; end: number } {
+  const size = Math.min(total, Math.max(MIN_TASK_ROWS, taskRows))
   const start = Math.max(0, Math.min(total - size, centre - Math.floor(size / 2)))
   return { start, end: start + size }
+}
+
+/** How long `stage` lasted: from its start to the start of the next stage the run entered; unknown when either is. */
+function stageDuration(s: RunState, i: number): string | undefined {
+  const starts = s.stageStartedAt ?? {}
+  const from = starts[STAGES[i]!]
+  const to = STAGES.slice(i + 1).map(stage => starts[stage]).find(at => at !== undefined)
+  return from && to ? formatDuration(to - from) : undefined
 }
 
 function stagesOf(s: RunState): PaneModel['stages'] {
@@ -208,35 +248,58 @@ function stagesOf(s: RunState): PaneModel['stages'] {
   const done = s.tasks.filter(t => t.status === 'done').length
   return STAGES.map((stage, i) => {
     const label = stageLabel({ ...s, stage })
-    if (i > cur) return { label, status: 'todo' as const }
-    if (stage === 'done' || (i === cur && s.stage === 'done')) return { label, status: 'done' as const }
+    const milestones = MILESTONE_STAGES.has(stage) ? s.milestones.filter(m => m.stage === stage).map(m => m.label) : []
+    if (i > cur) return { label, status: 'todo' as const, milestones }
+    if (stage === 'done' || (i === cur && s.stage === 'done')) return { label, status: 'done' as const, milestones }
     if (i === cur) {
       const detail = stage === 'exec' ? `${done}/${s.tasks.length}`
         : s.stagePhase ? REPORTED_LABELS[s.stagePhase] : undefined
-      return { label, status: 'active' as const, ...(detail ? { detail } : {}) }
+      return { label, status: 'active' as const, milestones, ...(detail ? { detail } : {}) }
     }
     const hasMilestone = s.milestones.some(m => m.stage === stage)
     // Only the early stages can be legitimately bypassed; later ones are always traversed.
-    return { label, status: hasMilestone || i >= STAGES.indexOf('exec') ? 'done' as const : 'skipped' as const }
+    if (!hasMilestone && i < STAGES.indexOf('exec')) return { label, status: 'skipped' as const, milestones }
+    const duration = stageDuration(s, i)
+    return { label, status: 'done' as const, milestones, ...(duration ? { duration } : {}) }
   })
+}
+
+/** The phases still expected after `trail`, by the furthest point of the mode's sequence it reached. */
+function expectedAfter(trail: readonly TaskEvent[], mode: RunState['mode']): TaskPhase[] {
+  const sequence = mode === 'direct' ? INLINE_PHASES : SDD_PHASES
+  const place = (phase: TaskPhase) => sequence.indexOf(mode === 'direct' ? phase : SDD_PLACE[phase] ?? phase)
+  const reached = trail.reduce((furthest, e) => Math.max(furthest, place(e.phase)), -1)
+  return sequence.slice(reached + 1)
+}
+
+function currentOf(s: RunState, t: TaskState): NonNullable<PaneModel['current']> {
+  const last = t.trail.length - 1
+  const passed = t.trail.map((e, i) => ({
+    label: phaseLabel(e), status: i === last ? 'active' as const : 'done' as const, ...(e.verdict ? { verdict: e.verdict } : {}),
+  }))
+  const expected = expectedAfter(t.trail, s.mode).map(phase => ({ label: phaseLabel({ phase, at: 0 }), status: 'todo' as const }))
+  return { n: t.n, title: t.title, trail: [...passed, ...expected] }
 }
 
 export function paneModel(s: RunState, now: number, rows: number): PaneModel {
   const cur = currentTask(s)
+  const current = cur ? currentOf(s, cur) : undefined
+  const stages = stagesOf(s)
   const curIndex = cur ? s.tasks.indexOf(cur) : Math.max(0, s.tasks.findIndex(t => t.status !== 'done'))
-  const { start, end } = visibleWindow(s.tasks.length, rows, curIndex)
+  const extraRows = stages.reduce((n, g) => n + g.milestones.length, 0) + (current?.trail.length ?? 0)
+  const { start, end } = visibleWindow(s.tasks.length, rows - PANE_CHROME_ROWS - extraRows, curIndex)
   const est = estimate(s, now)
   const elapsed = elapsedOf(s, now)
   return {
     title: s.planPath ? `superpowers · ${planSlug(s.planPath)}` : 'superpowers',
     ...(elapsed ? { elapsed } : {}),
-    stages: stagesOf(s),
+    stages,
     tasks: s.tasks.slice(start, end).map(t => ({
       n: t.n, title: t.title, status: t.status, fixRounds: t.fixRounds,
       ...(t.status === 'done' && t.startedAt && t.doneAt ? { duration: formatDuration(t.doneAt - t.startedAt) } : {}),
     })),
     hiddenTasks: s.tasks.length - (end - start),
-    ...(cur ? { current: { n: cur.n, trail: cur.trail.map(e => e.verdict ? `${phaseLabel(e)} (${e.verdict})` : phaseLabel(e)) } } : {}),
+    ...(current ? { current } : {}),
     decisions: s.decisions,
     ...(est ? { eta: `avg ${formatDuration(est.avgMs)}/task · ~${formatDuration(est.remainingMs)} left · ETA ${formatClock(est.finishAt)}` } : {}),
   }

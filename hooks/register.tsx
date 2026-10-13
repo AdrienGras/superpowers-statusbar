@@ -16,6 +16,7 @@ import { isDockingSurface, renderBand } from './band.tsx'
 import { callEvents, toolEvent } from './normalize.ts'
 import { PANE_ID, PANE_TITLE, renderPane } from './pane.tsx'
 import { observe } from './runtime.ts'
+import { spinnerFailed } from './spin.ts'
 import type { EnginePort } from './runtime.ts'
 
 /**
@@ -129,6 +130,12 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'AbovePrompt' }, renderBand).catch(($, e, next) => next(e))
 
   on('ui.render', { component: 'Pane', requestId: PANE_ID }, renderPane)
+
+  // A spinner `Client` that failed is left out from then on: the engine draws its site again, with a still mark.
+  on('ui.fault', ($, e, next) => {
+    spinnerFailed(e.surface)
+    return next(e)
+  })
 
   on('skill.prompt', async ($, e, next) => {
     await seen($, at => ({ kind: 'skill', skill: e.skill, at }), options)

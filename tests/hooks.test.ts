@@ -6,6 +6,7 @@ import type { RunState, TraceEntry } from '../types'
 import { REPORT_TOOL } from '../src/instrument.ts'
 import { callEvents, toolEvent } from '../hooks/normalize.ts'
 import { observe } from '../hooks/runtime.ts'
+import { canSpin, spinnerFailed } from '../hooks/spin.ts'
 import type { EnginePort } from '../hooks/runtime.ts'
 import { replay } from '../src/detectors/index.ts'
 import { PLAN, PLAN_TEXT, WORKSPACE } from './fixtures/runs.ts'
@@ -51,6 +52,13 @@ async function planReady($: Engine) {
 }
 
 // --- normalize ---
+
+test('the spinner runs on the terminal and the desktop until it fails there', () => {
+  expect(['terminal', 'desktop', 'vscode', 'mobile'].map(s => canSpin(s as 'terminal'))).toEqual([true, true, false, false])
+  spinnerFailed('terminal')
+  expect(canSpin('terminal')).toBe(false)
+  expect(canSpin('desktop')).toBe(true)
+})
 
 test('toolEvent flattens the call into input and keeps the outcome', () => {
   const e = { tool: 'Bash', tool_use_id: 'u1', agentId: 'a1', requestMeta: {}, command: 'ls' } as const

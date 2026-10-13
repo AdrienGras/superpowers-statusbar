@@ -50,7 +50,7 @@ test('stage-entered exec on a null state starts a run at exec with mode', () => 
   expect(must(s).mode).toBe('direct')
   expect(must(s).milestones).toEqual([{ stage: 'exec', label: 'exec inline', at: 5 }])
   expect(newRun('plan', 7)).toEqual({
-    id: 'run-7', startedAt: 7, stage: 'plan', tasks: [], milestones: [], agents: {}, decisions: [],
+    id: 'run-7', startedAt: 7, stage: 'plan', stageStartedAt: { plan: 7 }, tasks: [], milestones: [], agents: {}, decisions: [],
   })
 })
 
@@ -86,6 +86,33 @@ test('brainstorm milestones and phases', () => {
   expect(must(p).stage).toBe('plan')
   expect(must(p).planPath).toBe('/p/plan.md')
   expect(must(p).milestones).toContainEqual({ stage: 'plan', label: '2 tasks · 5 steps', at: 20 })
+})
+
+test('a builder check dispatched in brainstorm shows as its phase until a phase is reported', () => {
+  const s = run(null, [
+    { type: 'stage-entered', stage: 'brainstorm', at: 1 },
+    { type: 'phase-reported', phase: 'design-writing', at: 2 },
+    { type: 'agent-dispatched', agentId: 'b1', role: 'builder-check', isRunning: true, at: 3 },
+  ])
+  expect(must(s).stagePhase).toBe('builder-check')
+  expect(must(s).milestones).toEqual([{ stage: 'brainstorm', label: 'builder check', at: 3 }])
+  expect(must(reduce(s, { type: 'phase-reported', phase: 'awaiting-approval', at: 4 })).stagePhase).toBe('awaiting-approval')
+  const exec = run(execRun(), [{ type: 'agent-dispatched', agentId: 'b2', role: 'builder-check', isRunning: true, at: 30 }])
+  expect(must(exec).stagePhase).toBeUndefined()
+})
+
+test('each stage entered records when it started', () => {
+  const s = run(null, [
+    { type: 'stage-entered', stage: 'brainstorm', at: 1 },
+    PLAN,
+    { type: 'stage-entered', stage: 'exec', mode: 'sdd', at: 30 },
+    { type: 'stage-entered', stage: 'exec', at: 31 },
+    { type: 'agent-dispatched', agentId: 'f', role: 'final-reviewer', isRunning: true, at: 40 },
+    { type: 'stage-entered', stage: 'finishing', at: 50 },
+    { type: 'branch-finished', at: 60 },
+  ])
+  expect(must(s).stageStartedAt).toEqual({ brainstorm: 1, plan: 20, exec: 30, 'final-review': 40, finishing: 50, done: 60 })
+  expect(must(execRun()).stageStartedAt).toEqual({ exec: 10 })
 })
 
 test('plan-loaded replaces tasks and keeps done ones', () => {

@@ -25,6 +25,8 @@ export type Milestone = { stage: Stage; label: string; at: number }
 export type FinalReview = { phase: 'review' | 'fixes' | 'done'; verdict?: string }
 export type RunState = {
   id: string; startedAt: number; stage: Stage; stagePhase?: ReportedPhase
+  /** When each stage the run went through was entered; absent on a run stored before it was recorded. */
+  stageStartedAt?: Partial<Record<Stage, number>>
   mode?: Mode; specPath?: string; planPath?: string; workspace?: string
   tasks: TaskState[]; milestones: Milestone[]
   agents: Record<string, AgentRecord>
