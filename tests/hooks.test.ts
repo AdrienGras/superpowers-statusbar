@@ -33,7 +33,6 @@ async function runOf($: Engine): Promise<RunState | null> {
 function engine(on: On, env: Record<string, string> = {}) {
   mock.clock(on, { now: 1_000_000 })
   mock.env(on, env)
-  on('skill.prompt', ($, e) => ({ text: e.text }))
   on('turn.start', ($, e) => ({ turnId: e.turnId }))
   on('turn.complete', ($, e) => ({ text: e.answer }))
   on('session.end', ($, e) => ({ sessionId: e.sessionId }))
@@ -46,7 +45,7 @@ const turnComplete = (answer: string) => ({ answer, durationMs: 1, isAborted: fa
 
 /** Writing-plans, then the plan written, then the main turn ends: the run waits for the execution choice. */
 async function planReady($: Engine) {
-  await $.skill.prompt({ skill: 'superpowers:writing-plans', text: SKILL_TEXT })
+  await $.tool.call({ tool: 'Skill', skill: 'superpowers:writing-plans' })
   await $.tool.call({ tool: 'Write', file_path: `/repo/${PLAN}`, content: PLAN_TEXT })
   await $.turn.complete(turnComplete('Plan écrit.'))
 }
@@ -188,11 +187,12 @@ test('session.start registers the report tool and the command', async ($, on) =>
   expect(commands).toEqual([{ name: 'sp-progress', description: 'Open or close the superpowers progress pane' }])
 })
 
-test('skill.prompt observes the skill and leaves its text alone', { plugins: [PEEK] }, async ($, on) => {
+test('skill.prompt no longer changes the run and leaves its text alone', { plugins: [PEEK] }, async ($, on) => {
   engine(on)
+  on('skill.prompt', ($, e) => ({ text: e.text }))
   const r = await $.skill.prompt({ skill: 'superpowers:writing-plans', text: SKILL_TEXT })
   expect(r.text).toBe(SKILL_TEXT)
-  expect((await runOf($))?.stage).toBe('plan')
+  expect(await runOf($)).toBeNull()
 })
 
 test('typing /superpowers:writing-plans enters plan and runs the command', { plugins: [PEEK] }, async ($, on) => {
@@ -217,20 +217,17 @@ test('report_phase calls are answered by the mod and update the run', { plugins:
   engine(on)
   const reached: string[] = []
   on('tool.call', ($, e) => { reached.push(e.tool); return { result: 'engine' } })
-  await $.skill.prompt({ skill: 'superpowers:brainstorming', text: SKILL_TEXT })
+  await $.tool.call({ tool: 'Skill', skill: 'superpowers:brainstorming' })
   const r = await $.tool.call({ tool: REPORT, phase: 'awaiting-approval' })
   expect(r).toEqual({ result: 'ok' })
-  expect(reached).toEqual([])
+  expect(reached).toEqual(['Skill'])
   expect((await runOf($))?.stagePhase).toBe('awaiting-approval')
 })
 
-test('a Skill call and its skill.prompt enter the stage once', { plugins: [PEEK] }, async ($, on) => {
+test('a Skill call entering the same stage twice enters it once', { plugins: [PEEK] }, async ($, on) => {
   engine(on)
   on('tool.call', () => ({ result: { success: true } }))
-  const enter = async (skill: string) => {
-    await $.skill.prompt({ skill, text: SKILL_TEXT })
-    await $.tool.call({ tool: 'Skill', skill })
-  }
+  const enter = (skill: string) => $.tool.call({ tool: 'Skill', skill })
   await enter('superpowers:brainstorming')
   const first = await runOf($)
   expect(first?.stage).toBe('brainstorm')
@@ -288,8 +285,7 @@ test('a failing observer never breaks the tool call', { plugins: [PEEK] }, async
   expect(ran).toMatchObject(shell(`${WORKSPACE}\n`))
   expect(ran.isError).toBeUndefined()
   expect(await runOf($)).toBeNull()
-  expect((await $.skill.prompt({ skill: 'superpowers:writing-plans', text: SKILL_TEXT })).text)
-    .toBe(SKILL_TEXT)
+  expect(await $.tool.call({ tool: 'Skill', skill: 'superpowers:writing-plans' })).toMatchObject(shell(`${WORKSPACE}\n`))
 })
 
 test('the trace file gets one JSON line per action when SP_STATUSBAR_TRACE is set', async ($, on) => {
@@ -311,7 +307,8 @@ test('the trace file gets one JSON line per action when SP_STATUSBAR_TRACE is se
 
 test('a /clear forgets the run', { plugins: [PEEK] }, async ($, on) => {
   engine(on)
-  await $.skill.prompt({ skill: 'superpowers:brainstorming', text: SKILL_TEXT })
+  on('tool.call', () => ({ result: { success: true } }))
+  await $.tool.call({ tool: 'Skill', skill: 'superpowers:brainstorming' })
   expect((await runOf($))?.stage).toBe('brainstorm')
   await $.session.end({ reason: 'clear', sessionId: 's1', resume: { id: 's1' } })
   expect(await runOf($)).toBeNull()

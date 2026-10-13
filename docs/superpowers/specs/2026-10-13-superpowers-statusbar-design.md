@@ -122,7 +122,7 @@ Superpowers 7.0.0 n'écrit en format fixe que la sortie de ses scripts et une pa
 | Event | Ce qu'on en tire |
 |---|---|
 | `tool.call` sur l'outil `Skill` *(décidé pendant l'implémentation)* | Entrée dans un skill de la chaîne (`superpowers:brainstorming`, `writing-plans`, `subagent-driven-development`, `executing-plans`, `finishing-a-development-branch`), compté avant l'appel lui-même ; un appel en erreur ne compte pas. C'est la source principale, voir `skill.prompt` ci-dessous. Un skill vu dans un subagent (`agentId`) ne crée jamais de run et ne fait jamais reculer l'étape, même depuis `done` ; il la fait avancer, avec son mode, seulement si l'agent n'a pas de rôle reconnu (`implementer`, `reviewer`, `re-reviewer`, `final-reviewer`, `builder-check`) : un agent `other`, `unknown` ou inconnu du run peut le faire, ce qui couvre l'orchestrateur du mode « cheaper orchestration » qui appelle lui-même `subagent-driven-development` puis `finishing-a-development-branch`. Dans un subagent au rôle reconnu, il est ignoré *(v0.1.1)*. |
-| `skill.prompt` *(décidé pendant l'implémentation)* | Observe seulement : même entrée dans un skill, utile pour un `/slash` tapé. Le plugin de sécurité intégré à Claude Code contourne la réécriture `skill.prompt` des plugins installés au niveau utilisateur, et le mod n'écrit plus rien dans le texte des skills ; là où le hook est contourné, un skill tapé en `/slash` passe inaperçu jusqu'au premier appel d'outil reconnaissable. |
+| `command.run` / `skill.prompt` *(v0.1.1)* | Un skill tapé en `/superpowers:…` est vu par `command.run` (sauf `sp-progress`), vérifié en live (`claude -p`, trace `via: command`). `skill.prompt` n'est plus observé : le plugin de sécurité intégré à Claude Code le contourne pour les plugins utilisateur et l'événement ne porte pas d'`agentId`, un skill de sous-agent pourrait donc démarrer un nouveau run à tort. Le mod n'écrit toujours rien dans le texte des skills. |
 | `tool.call` (avec `await next(e)` pour lire le résultat) | Scripts Bash et leurs sorties, Write de la spec et du plan, dispatchs Agent (rôle du subagent par sa `description`, à défaut par la première ligne de son prompt), reprises `SendMessage` d'un agent connu. Porte `agentId` : on voit aussi ce qui se passe dans les subagents (mode orchestrateur compris). |
 | `turn.start` / `turn.complete` (boucle principale) | La session rend la main : c'est le signal `WAITING`, la raison venant de l'étape en cours ; sauf si un agent lancé en arrière-plan travaille encore. Le tour suivant efface l'attente. `turn.complete` d'un subagent porte son rapport (statut, verdict). |
 | `session.start` | Déclenche la reconstruction depuis le transcript (voir plus bas). |
@@ -183,7 +183,7 @@ Des workspaces de runs terminés traînent sur le disque (plus de dix sous `/srv
 ## Architecture *(mon choix)*
 
 ```
-events (tool.call, skill.prompt, turn.*, session.start) ──────┐
+events (tool.call, command.run, turn.*, session.start) ──────┐
 disque (plan, progress.md)  ──────────────────────────────────┼─► détecteurs → actions normalisées
                                                                │
                                                                ▼

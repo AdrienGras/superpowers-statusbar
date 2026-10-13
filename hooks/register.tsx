@@ -123,7 +123,7 @@ export const register: Register = (on, options) => {
     return { text: 'Progress pane opened.' }
   })
 
-  // A skill typed as `/superpowers:…` reaches `command.run`, not `skill.prompt`.
+  // A skill typed as `/superpowers:…` reaches `command.run`; the security plugin bypasses `skill.prompt`, which has no agentId.
   on('command.run', async ($, e, next) => {
     if (e.command !== 'sp-progress') await seen($, at => ({ kind: 'command', command: e.command, at }), options)
     return next(e)
@@ -144,11 +144,6 @@ export const register: Register = (on, options) => {
     spinnerFailed(e.surface)
     return next(e)
   })
-
-  on('skill.prompt', async ($, e, next) => {
-    await seen($, at => ({ kind: 'skill', skill: e.skill, at }), options)
-    return next(e)
-  }).catch(($, e, next) => next(e))
 
   on('tool.call', { tool: REPORT }, async ($, e) => {
     await seen($, at => toolEvent(e, REPORTED, at), options)

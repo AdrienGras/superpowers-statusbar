@@ -54,7 +54,6 @@ function engine(on: On, files: Record<string, readonly string[]> = FILES) {
     return { value: versions[Math.min(n, versions.length - 1)]! }
   })
   on('tool.call', () => world.answer)
-  on('skill.prompt', ($, e) => ({ text: e.text }))
   on('turn.start', ($, e) => ({ turnId: e.turnId }))
   on('turn.complete', ($, e) => ({ text: e.answer }))
   on('ui.open', ($, e) => { world.opened.push(e.id); return { value: { isPlaced: true } } })
@@ -72,7 +71,8 @@ async function replay($: Engine, clock: MockClock, world: ReturnType<typeof engi
     await clock.set(Math.max(clock.now(), e.at))
     switch (e.kind) {
       case 'skill':
-        await $.skill.prompt({ skill: e.skill, text: SKILL_TEXT })
+        world.answer = { result: 'ok' }
+        await $.tool.call({ tool: 'Skill', skill: e.skill } as unknown as ToolCallArgs)
         break
       case 'tool':
         world.answer = { result: e.result ?? 'ok', ...(e.text !== undefined ? { text: e.text } : {}) }

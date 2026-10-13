@@ -138,10 +138,10 @@ test('no background agent survives a resume: the next main turn end waits', { pl
 
 test('a run already stored is not rebuilt', { plugins: [PEEK] }, async ($, on) => {
   engine(on)
-  on('skill.prompt', (_$, e) => ({ text: e.text }))
+  on('tool.call', () => ({ result: { success: true } }))
   let asked = false
   on('session.messages', () => { asked = true; return { value: [] } })
-  await $.skill.prompt({ skill: 'superpowers:brainstorming', text: 'x' })
+  await $.tool.call({ tool: 'Skill', skill: 'superpowers:brainstorming' })
   await start($)
   expect(asked).toBe(false)
   expect((await runOf($))?.stage).toBe('brainstorm')

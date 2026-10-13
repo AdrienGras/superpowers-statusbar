@@ -20,7 +20,7 @@ Superpowers 7.0.0 is required: the mod recognises the scripts, the subagent disp
 
 The mod follows the run from Claude Code's events: tool calls (superpowers scripts, writes of the spec and the plan, subagent dispatches) and their results, turn ends, and the skills launched through the `Skill` tool. For the phases those events do not show (conversation, drafting and review of the spec or the plan, RED/GREEN/refactor), the mod exposes a tool to the model, `report_phase`, whose description asks it to report each phase change during the `brainstorming`, `writing-plans` and `test-driven-development` skills. The mod does not change the skills' text.
 
-Known limit: a skill launched by typing `/superpowers:…` is only seen through the `skill.prompt` hook, which the security plugin built into Claude Code bypasses for plugins installed at user level. Where that is the case, such a launch can go unnoticed; the mod catches up with the run as soon as a recognisable tool call follows (for example the `sdd-workspace` script at the start of execution).
+A skill launched by typing `/superpowers:…` is seen through the `command.run` hook; one the model launches is seen through its `Skill` tool call. The `skill.prompt` hook is no longer observed: the security plugin built into Claude Code bypasses it for user-level plugins, and it carries no agent id.
 
 ## Installation
 
