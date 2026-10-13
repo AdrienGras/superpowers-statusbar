@@ -247,7 +247,12 @@ function waitingBand(s: RunState, w: Waiting, columns: number): Segment[] {
   return out
 }
 
+/** Every band is cut to `columns` as a last resort, after its own drop order, so none is ever wider. */
 export function bandSegments(s: RunState, now: number, columns: number): Segment[] {
+  return cutTo(bandOf(s, now, columns), columns)
+}
+
+function bandOf(s: RunState, now: number, columns: number): Segment[] {
   if (s.stage === 'done') return doneBand(s, now)
   if (s.waiting) return waitingBand(s, s.waiting, columns)
   return s.stage === 'exec' ? fitExecBand(s, now, columns) : simpleBand(s, now, columns)

@@ -346,3 +346,21 @@ test('the pane keeps plan self-review as the plan stage detail', () => {
   const s: RunState = { ...newRun('plan', 1000), tasks, stagePhase: 'self-review' }
   expect(paneModel(s, NOW, 40).stages[1]?.detail).toBe('plan self-review')
 })
+
+test('every band is cut to its columns and whole when there is room', () => {
+  const doneRun: RunState = { ...execRun(2, 2), stage: 'done', finishedAt: 1000 + 65 * MIN }
+  const bands: RunState[] = [
+    { ...newRun('brainstorm', 1000), stagePhase: 'awaiting-approval' },
+    execRun(1, 3, { title: 'Parser' }),
+    { ...newRun('final-review', 1000), startedAt: 1000 },
+    doneRun,
+  ]
+  for (const s of bands) {
+    for (let columns = 1; columns <= 20; columns++) {
+      expect(text(bandSegments(s, NOW, columns)).length).toBeLessThanOrEqual(columns)
+    }
+    const wide = text(bandSegments(s, NOW, 200))
+    expect(wide.length).toBeGreaterThan(15)
+    expect(text(bandSegments(s, NOW, wide.length))).toBe(wide)
+  }
+})
