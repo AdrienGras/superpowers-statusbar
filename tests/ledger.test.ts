@@ -34,3 +34,8 @@ test('decisionsOf keeps minor, parked and ruling in order', () => {
   expect(decisions.map(d => d.kind)).toEqual(['parked', 'minor', 'ruling', 'ruling'])
   expect(decisions[0]).toEqual({ kind: 'parked', task: '2', text: 'test de borne manquant — Ruling: hors périmètre' })
 })
+
+test('a fix round number needs a word boundary', () => {
+  expect(parseLedger('Task 2: fix round 3x/5')).toEqual([])
+  expect(parseLedger('Task 2: fix round 3/5 — x')).toEqual([{ kind: 'fix-round', task: '2', round: 3 }])
+})

@@ -13,14 +13,21 @@ if (!root) {
 const read = (file: string): string | undefined => {
   try {
     return readFileSync(join(root, file), 'utf8')
-  } catch {
-    return undefined
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+    throw e
   }
 }
 
+const PROBLEM_TEXT = {
+  'missing-file': 'missing file',
+  'missing-marker': 'missing marker',
+  'unreadable-file': 'unreadable file',
+} as const
+
 const problems = checkContract(MARKERS, read)
 for (const p of problems) {
-  console.log(`✗ ${p.id} — ${p.file}: ${p.problem === 'missing-file' ? 'missing file' : 'missing marker'}`)
+  console.log(`✗ ${p.id} — ${p.file}: ${PROBLEM_TEXT[p.problem]}`)
 }
 if (problems.length === 0) console.log(`✓ ${MARKERS.length} markers OK`)
 process.exit(problems.length === 0 ? 0 : 1)

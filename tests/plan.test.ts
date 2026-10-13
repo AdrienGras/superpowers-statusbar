@@ -41,3 +41,16 @@ test('parsePlan ignores headings inside fences, including four-backtick fences',
 test('parsePlan returns [] for text with no task heading', () => {
   expect(parsePlan('# Title\n\nsome text\n')).toEqual([])
 })
+
+test('parsePlan hides headings inside a tilde fence', () => {
+  expect(parsePlan('~~~\n### Task 9: Hidden\n~~~\n### Task 1: Shown')).toEqual([{ n: '1', title: 'Shown', steps: 0 }])
+})
+
+test('parsePlan keeps a fence open on a shorter closing fence', () => {
+  const text = '````\n```\n### Task 9: Hidden\n````\n### Task 1: Shown'
+  expect(parsePlan(text).map(t => t.n)).toEqual(['1'])
+})
+
+test('parsePlan does not open a backtick fence whose info string has a backtick', () => {
+  expect(parsePlan('```js `x`\n### Task 1: Shown')).toEqual([{ n: '1', title: 'Shown', steps: 0 }])
+})
