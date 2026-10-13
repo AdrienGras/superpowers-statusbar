@@ -244,7 +244,7 @@ test('paneModel leaves a stage span unknown when a start is missing', () => {
   const s: RunState = {
     ...execRun(1, 3), stage: 'final-review',
     stageStartedAt: { plan: 1000, 'final-review': 1000 + 30 * MIN },
-    milestones: [{ stage: 'plan', label: '3 tasks · 7 steps', at: 4 }],
+    milestones: [{ stage: 'plan', label: '3 tasks · 7 steps', at: 4 }, { stage: 'exec', label: 'exec SDD', at: 5 }],
   }
   const stages = paneModel(s, NOW, 40).stages
   expect(stages.map(g => [g.label, g.status, g.duration])).toEqual([
@@ -262,5 +262,17 @@ test('paneModel marks an early stage skipped only when the run never entered it'
   expect(paneModel(s, NOW, 40).stages.slice(0, 2)).toEqual([
     { label: 'brainstorming', status: 'done', duration: '5m', milestones: [] },
     { label: 'plan', status: 'active', milestones: [] },
+  ])
+})
+
+test('paneModel marks any stage the run went past without entering as skipped, not done', () => {
+  const s: RunState = {
+    ...execRun(3, 3), stage: 'finishing',
+    stageStartedAt: { exec: 1000, finishing: 1000 + 30 * MIN },
+    milestones: [{ stage: 'exec', label: 'exec SDD', at: 1000 }],
+  }
+  expect(paneModel(s, NOW, 40).stages.map(g => [g.label, g.status])).toEqual([
+    ['brainstorming', 'skipped'], ['plan', 'skipped'], ['exec SDD', 'done'],
+    ['final review', 'skipped'], ['finishing', 'active'], ['done', 'todo'],
   ])
 })

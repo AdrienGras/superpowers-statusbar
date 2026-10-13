@@ -259,10 +259,10 @@ function stagesOf(s: RunState): PaneModel['stages'] {
         : s.stagePhase ? REPORTED_LABELS[s.stagePhase] : undefined
       return { label, status: 'active' as const, milestones, ...(detail ? { detail } : {}) }
     }
+    // A stage behind the current one that the run never entered was bypassed, whatever its position: no final review
+    // happened when the run went from exec straight to finishing.
     const isEntered = s.milestones.some(m => m.stage === stage) || s.stageStartedAt?.[stage] !== undefined
-    // Only the early stages can be legitimately bypassed, and only when the run never entered them; later ones are
-    // always traversed.
-    if (!isEntered && i < STAGES.indexOf('exec')) return { label, status: 'skipped' as const, milestones }
+    if (!isEntered) return { label, status: 'skipped' as const, milestones }
     const duration = stageDuration(s, i)
     return { label, status: 'done' as const, milestones, ...(duration ? { duration } : {}) }
   })
