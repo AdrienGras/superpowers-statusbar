@@ -1,6 +1,7 @@
 import type {
   Action, AgentRoleName, Detection, FileRequest, Mode, ObservedEvent, ReportedPhase, RunState, Stage,
 } from '../../types'
+import { ALL_PHASES } from '../instrument.ts'
 import { parsePlan } from '../plan.ts'
 import { parseLedger } from '../ledger.ts'
 
@@ -74,10 +75,7 @@ const SKILL_STAGES: Readonly<Record<string, { stage: Stage; mode?: Mode }>> = {
   'finishing-a-development-branch': { stage: 'finishing' },
 }
 
-const REPORTED_PHASES: ReadonlySet<string> = new Set<ReportedPhase>([
-  'conversation', 'design-writing', 'builder-check', 'awaiting-approval',
-  'drafting', 'self-review', 'red', 'green', 'refactor',
-])
+const REPORTED_PHASES: ReadonlySet<string> = new Set<ReportedPhase>(ALL_PHASES)
 
 const REPORT_TOOL = 'mcp__superpowers-statusbar__report_phase'
 
