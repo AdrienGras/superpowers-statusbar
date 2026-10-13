@@ -49,6 +49,27 @@ async function openPane($: EngineInterface) {
   await update($, paneOpenAtom, () => true)
 }
 
+/** Whether this copy of the module runs its minute timer; a hot reload cancels the timer with the module it ran in. */
+let isTicking = false
+
+/**
+ * Starts, once per copy of the module, a timer that redraws the band and the pane every minute while a run is
+ * underway, so their elapsed time and estimate move on when no observation writes the run.
+ */
+function tickEveryMinute($: EngineInterface) {
+  if (isTicking) return
+  isTicking = true
+  try {
+    $.clock.every(60_000, () => {
+      void read($, runAtom).then(run => {
+        if (run && run.stage !== 'done') $.ui.invalidate('ui.render')
+      }, () => {})
+    })
+  } catch {
+    isTicking = false
+  }
+}
+
 /** Observes, in order, the events `events` builds for the current time; neither the clock nor observing fails the hook. */
 async function seen($: EngineInterface, events: (at: number) => ObservedEvent | ObservedEvent[], options: PluginOptions) {
   let at: number
@@ -57,6 +78,7 @@ async function seen($: EngineInterface, events: (at: number) => ObservedEvent | 
   } catch {
     return
   }
+  tickEveryMinute($)
   for (const e of [events(at)].flat()) await observe(portOf($), e, options)
 }
 
@@ -66,6 +88,7 @@ export const register: Register = (on, options) => {
       $.tool.register(REPORT_TOOL),
       $.command.register({ name: 'sp-progress', description: 'Ouvre ou ferme le pane de progression superpowers' }),
     ])
+    tickEveryMinute($)
     return next(e)
   }).catch(($, e, next) => next(e))
 

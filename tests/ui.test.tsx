@@ -135,6 +135,24 @@ test('band draws the running line', async ($, on) => {
   }
 })
 
+test('band and pane move their elapsed time on every minute while the run is quiet', async ($, on) => {
+  const { clock, world } = engine(on)
+  await replay($, clock, world, MID_TASK_2)
+  const elapsed = /^\d+ min$/
+  const band = await mountBand($, 'terminal')
+  const pane = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'Pane', requestId: 'sp-progress', props: paneProps, viewport: DOCKED })
+  const before = (await band.find({ type: 'Text', text: elapsed }))?.text
+  const eta = (await pane.find({ type: 'Text', text: /^moy\./ }))?.text
+  expect(before).toBeDefined()
+  await clock.advance(20 * 60_000)
+  const after = (await band.find({ type: 'Text', text: elapsed }))?.text
+  expect(after).toBeDefined()
+  expect(after).not.toBe(before)
+  expect((await pane.find({ type: 'Text', text: /^moy\./ }))?.text).not.toBe(eta)
+  await band.unmount()
+  await pane.unmount()
+})
+
 test('band draws T\'ATTEND when waiting', async ($, on) => {
   const { clock, world } = engine(on)
   await replay($, clock, world, PLAN_READY)
