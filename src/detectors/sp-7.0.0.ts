@@ -174,9 +174,9 @@ function scriptArgs(command: string, name: string): string[] | undefined {
   return m[1]!.trim().split(/\s+/).filter(Boolean).map(unquote)
 }
 
-function lastLine(text: string): string {
-  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
-  return lines[lines.length - 1] ?? ''
+/** The output line naming a plan workspace (`…/.superpowers/sdd/<name>`), whatever else the command printed. */
+function workspaceLine(text: string): string | undefined {
+  return text.split(/\r?\n/).map(l => l.trim()).find(l => /(?:^|\/)\.superpowers\/sdd\/[^/\s]+\/*$/.test(l))
 }
 
 function bashRan(e: ToolEvent, s: RunState | null): Detection {
@@ -188,7 +188,7 @@ function bashRan(e: ToolEvent, s: RunState | null): Detection {
   const ws = scriptArgs(command, 'sdd-workspace')
   const plan = ws?.[0]
   if (plan && isOk) {
-    const workspace = lastLine(out).replace(/\/+$/, '')
+    const workspace = workspaceLine(out)?.replace(/\/+$/, '')
     if (!s || isBeforeExec(s)) d.actions.push({ type: 'stage-entered', stage: 'exec', at: e.at })
     if (workspace) d.actions.push({ type: 'workspace-found', path: workspace, planPath: plan, at: e.at })
     d.reads.push({ role: 'plan', path: plan })
@@ -235,6 +235,9 @@ function roleOf(input: Record<string, unknown>, s: RunState): Role {
   if (first.startsWith("You are reviewing one task's implementation")) return { role: 'reviewer' }
   if (first.startsWith("You are re-reviewing one task's fix round")) return { role: 're-reviewer' }
   if (isFinalReviewTime && first.startsWith('You are a Senior Code Reviewer')) return { role: 'final-reviewer' }
+  // Real runs also word the final review their own way: any review once every task is done.
+  const isAfterTasks = s.stage === 'final-review' || (s.stage === 'exec' && s.tasks.length > 0 && s.tasks.every(t => t.status === 'done'))
+  if (isAfterTasks && /review/i.test(description)) return { role: 'final-reviewer' }
   return { role: 'other' }
 }
 

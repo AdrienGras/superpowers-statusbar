@@ -113,6 +113,19 @@ test('detect enters exec on sdd-workspace when the run has not reached it', () =
   expect(detect(e, state('final-review')).actions.map(a => a.type)).toEqual(['workspace-found'])
 })
 
+test('detect takes the workspace line, not the last one, from sdd-workspace output', () => {
+  const command = `bash /home/u/sp/skills/subagent-driven-development/scripts/sdd-workspace ${PLAN_PATH}; git rev-parse HEAD`
+  const found = (out: string) => detect(bash(command, out), state('exec', { mode: 'sdd' }))
+  const expected = {
+    actions: [{ type: 'workspace-found', path: WS, planPath: PLAN_PATH, at: AT }],
+    reads: [{ role: 'plan', path: PLAN_PATH }, { role: 'ledger', path: `${WS}/progress.md` }],
+  }
+  expect(found(`${WS}\n331a016317d6e4d4fdf6594fbee61a7700f0c9a6\n`)).toEqual(expected)
+  expect(found(`${WS}/\nfeat/recettes\nREADME.md\npackage.json\nsrc\n`)).toEqual(expected)
+  // No workspace line: the plan is still read, no workspace is guessed.
+  expect(found('331a016317d6e4d4fdf6594fbee61a7700f0c9a6\n')).toEqual({ actions: [], reads: [{ role: 'plan', path: PLAN_PATH }] })
+})
+
 test('detect ignores a failed sdd-workspace', () => {
   expect(detect(bash(`bash scripts/sdd-workspace ${PLAN_PATH}`, 'no such plan file', { isError: true }), null)).toEqual(empty)
 })
@@ -194,6 +207,23 @@ test('detect recognises re-reviewers, final reviewers and builder checks', () =>
   expect(role({ description: 'Review code changes', prompt: '' }, state('plan'))).toEqual({ role: 'other' })
   expect(role({ description: 'Builder check', prompt: 'You are a talented baker. You\'ve been handed a design document' }, state('brainstorm')))
     .toEqual({ role: 'builder-check' })
+})
+
+test('detect takes any review dispatched once every task is done as the final review', () => {
+  const role = (description: string, s: RunState) => {
+    const a = detect(agent({ description, prompt: 'Read the branch and report findings.' }, asyncResult('x')), s).actions[0]
+    return a?.type === 'agent-dispatched' ? { role: a.role, task: a.task } : undefined
+  }
+  const task = (n: string, status: 'active' | 'done') => ({ n, title: n, steps: 1, status, fixRounds: 0, trail: [] })
+  const allDone = state('exec', { tasks: [task('1', 'done'), task('2', 'done')] })
+  const midExec = state('exec', { tasks: [task('1', 'done'), task('2', 'active')] })
+  expect(role('Whole-branch code review', allDone)).toEqual({ role: 'final-reviewer' })
+  expect(role('Final REVIEW of text-utils', state('final-review'))).toEqual({ role: 'final-reviewer' })
+  expect(role('Whole-branch code review', midExec)).toEqual({ role: 'other' })
+  expect(role('Whole-branch code review', state('exec'))).toEqual({ role: 'other' })
+  expect(role('Review Task 2 (spec + quality)', midExec)).toEqual({ role: 'reviewer', task: '2' })
+  expect(role('Review Task 2 (spec + quality)', allDone)).toEqual({ role: 'reviewer', task: '2' })
+  expect(role('Re-review Task 2 fix round 1', allDone)).toEqual({ role: 're-reviewer', task: '2' })
 })
 
 test('detect falls back on the first prompt line for the agent role', () => {
