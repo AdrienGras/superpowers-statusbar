@@ -372,32 +372,71 @@ test('every trace line says which event produced it', async ($, on) => {
 
 // --- robustness ---
 
-test('a rebuild that fails half-way stores nothing', { plugins: [PEEK] }, async ($, on) => {
+/** The engine under a rebuild: what `session.start` needs, and `session.messages` answering `messages`. */
+function rebuilding(on: On, messages: () => unknown) {
   engine(on)
   on('tool.register', (_$, e) => ({ value: { tool: `mcp__superpowers-statusbar__${e.name}` } }))
   on('command.register', (_$, e) => ({ value: { command: e.name } }))
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
-  on('session.messages', () => ({ value: [
-    { role: 'assistant', text: '', toolUses: [{ tool: 'Skill', input: { skill: 'superpowers:writing-plans' } }] },
-    { role: 'assistant', text: '', toolUses: null },
-  ] as never }))
-  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  on('session.messages', async () => ({ value: await messages() as never }))
+}
+const startSession = ($: Engine) => $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+const TRANSCRIPT = [
+  { role: 'assistant', text: '', toolUses: [{ tool: 'Skill', input: { skill: 'superpowers:writing-plans' } }] },
+  { role: 'assistant', text: '', toolUses: [{ tool: 'Write', input: { file_path: `/repo/${PLAN}`, content: PLAN_TEXT } }] },
+]
+
+test('a rebuild is stored whole, once, or not at all', { plugins: [PEEK] }, async ($, on) => {
+  rebuilding(on, () => TRANSCRIPT)
+  // The store fails from its second write on: the replay must not have written event by event.
+  let writes = 0
+  on('state.set', ($, e, next) => (++writes > 1 ? { deny: 'state is down' } : next(e)))
+  await startSession($)
+  expect((await runOf($))?.tasks).toHaveLength(2)
+})
+
+test('a rebuild whose store fails stores nothing', { plugins: [PEEK] }, async ($, on) => {
+  rebuilding(on, () => TRANSCRIPT)
+  on('state.set', () => ({ deny: 'state is down' }))
+  await startSession($)
   expect(await runOf($)).toBeNull()
+})
+
+test('a run stored while the transcript is read is kept', { plugins: [PEEK] }, async ($, on) => {
+  let live: Promise<unknown> | undefined
+  rebuilding(on, async () => {
+    live = $.tool.call({ tool: 'Skill', skill: 'superpowers:brainstorming' })
+    await live
+    return TRANSCRIPT
+  })
+  on('tool.call', () => ({ result: { success: true } }))
+  await startSession($)
+  expect((await runOf($))?.stage).toBe('brainstorm')
 })
 
 test('a notification that throws synchronously leaves the reads and the trace done', async () => {
   const { port: p, world } = port(planned())
   const written: string[] = []
+  const read: string[] = []
   p.notify = () => { throw new Error('sync') }
   p.tracePath = async () => '/tmp/t.jsonl'
   p.writeFile = async (_path, text) => { written.push(text) }
-  await observe(p, { kind: 'turn-end', answer: 'Plan écrit.', at: 5 }, { notifications: true })
-  expect(world.stored?.waiting?.reason).toBe('execution-choice')
-  expect(written).toHaveLength(1)
-  expect(written[0]).toContain('turn-ended')
+  p.readFile = async path => { read.push(path); return PLAN_TEXT }
+  try {
+    // The notifying event (a turn end) asks for no file, and none asks for both: the read is fed by the next event, on the same port.
+    await observe(p, { kind: 'turn-end', answer: 'Plan écrit.', at: 5 }, { notifications: true })
+    expect(world.stored?.waiting?.reason).toBe('execution-choice')
+    expect(written).toHaveLength(1)
+    expect(written[0]).toContain('turn-ended')
+    await observe(p, { kind: 'tool', tool: 'Bash', input: { command: `bash ${SCRIPTS}/sdd-workspace ${PLAN}` }, text: `${WORKSPACE}\n`, at: 6 }, { notifications: true })
+    expect(read).toContain(`${WORKSPACE}/progress.md`)
+  } finally {
+    resetTrace()
+  }
 })
 
 test('the trace restarts after /clear', async ($, on) => {
+  resetTrace()
   engine(on, { SP_STATUSBAR_TRACE: '/tmp/trace.jsonl' })
   on('tool.call', () => ({ result: { success: true } }))
   const writes: string[] = []
@@ -432,6 +471,7 @@ const flush = async () => { for (let i = 0; i < 50; i++) await Promise.resolve()
 
 test('trace writes that overlap coalesce into one more write holding every line', async () => {
   resetTrace()
+  try {
   const { port: p } = port(null)
   const written: string[] = []
   let release: () => void = () => {}
@@ -451,5 +491,7 @@ test('trace writes that overlap coalesce into one more write holding every line'
   await Promise.all([first, ...others])
   expect(written).toHaveLength(2)
   expect(written[1]?.trimEnd().split('\n').length).toBeGreaterThanOrEqual(2)
-  resetTrace()
+  } finally {
+    resetTrace()
+  }
 })

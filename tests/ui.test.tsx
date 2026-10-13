@@ -412,9 +412,21 @@ test('the band records the docking surface only on the surfaces it draws on', as
 test('a fault outside the spinner module leaves the spinner alone', async () => {
   // The harness cannot raise `ui.fault` (no `$.ui.fault`), so the hook's rule is tested where it lives.
   const fault = (module: string) => ({ surface: 'terminal', module }) as const
-  onSpinnerFault(fault('hooks/other.tsx'))
-  expect(canSpin('terminal')).toBe(true)
-  onSpinnerFault(fault('hooks/spinner.tsx'))
-  expect(canSpin('terminal')).toBe(false)
   resetSpinnerFaults()
+  try {
+    onSpinnerFault(fault('hooks/other.tsx'))
+    expect(canSpin('terminal')).toBe(true)
+    onSpinnerFault(fault('hooks/spinner.tsx'))
+    expect(canSpin('terminal')).toBe(false)
+  } finally {
+    resetSpinnerFaults()
+  }
+})
+
+test('a survey holding the band still lets it record the docking surface', async ($, on) => {
+  const { clock, world } = engine(on)
+  const survey = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'AbovePrompt', props: { ...bandProps, hasSurvey: true }, viewport: DOCKED })
+  await survey.unmount()
+  await replay($, clock, world, MID_TASK_2)
+  expect(world.opened).toEqual(['sp-progress'])
 })
