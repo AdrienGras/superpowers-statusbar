@@ -266,6 +266,39 @@ test('detect ignores an Agent call without an agent id', () => {
   expect(detect(agent({ description: 'Implement Task 1: X', prompt: '' }, 'Error'), state('exec'))).toEqual(empty)
 })
 
+// --- agent.spawn ---
+
+type SpawnEvent = Extract<ObservedEvent, { kind: 'spawn' }>
+
+const spawn = (agentId: string, description: string, extra: Partial<SpawnEvent> = {}): SpawnEvent =>
+  ({ kind: 'spawn', agentId, description, prompt: 'p', at: AT, ...extra })
+
+test('a spawn dispatches the agent, running, with its role', () => {
+  const e = spawn('impl-1', 'Implement Task 1: Modèle', { prompt: '…' })
+  expect(detect(e, state('exec')).actions).toEqual([
+    { type: 'agent-dispatched', agentId: 'impl-1', role: 'implementer', task: '1', isRunning: true, at: AT },
+  ])
+  expect(detect(e, null)).toEqual(empty)
+})
+
+test('an Agent call for an agent seen at spawn only reports a foreground answer', () => {
+  const s = state('exec', { agents: { 'impl-1': { role: 'implementer', task: '1', isRunning: true } } })
+  const input = { description: 'Implement Task 1: Modèle', prompt: 'p' }
+  expect(detect(agent(input, { status: 'async_launched', agentId: 'impl-1' }), s)).toEqual(empty)
+  expect(detect(agent(input, { status: 'completed', agentId: 'impl-1', content: [{ type: 'text', text: 'Status: DONE' }] }), s).actions)
+    .toEqual([{ type: 'agent-reported', agentId: 'impl-1', answer: 'Status: DONE', at: AT }])
+})
+
+test('an Agent call for an agent not seen at spawn dispatches as before', () => {
+  const input = { description: 'Implement Task 1: Modèle', prompt: 'p' }
+  const dispatched = { type: 'agent-dispatched', agentId: 'impl-1', role: 'implementer', task: '1', isRunning: true, at: AT }
+  expect(detect(agent(input, asyncResult('impl-1')), state('exec')).actions).toEqual([dispatched])
+  const other = state('exec', { agents: { 'other-1': { role: 'implementer', task: '1', isRunning: true } } })
+  expect(detect(agent(input, asyncResult('impl-1')), other).actions).toEqual([dispatched])
+  const unknown = state('exec', { agents: { 'impl-1': { role: 'unknown', isRunning: false, pendingAnswer: 'Status: DONE' } } })
+  expect(detect(agent(input, asyncResult('impl-1')), unknown).actions).toEqual([dispatched])
+})
+
 // --- SendMessage, turns, files ---
 
 test('detect resumes a known agent on SendMessage', () => {

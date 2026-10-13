@@ -13,7 +13,7 @@ import type { ObservedEvent } from '../types'
 import { REPORT_TOOL } from '../src/instrument.ts'
 import { messagesToEvents, stopAgents } from '../src/rebuild.ts'
 import { isDockingSurface, renderBand } from './band.tsx'
-import { callEvents, toolEvent } from './normalize.ts'
+import { callEvents, spawnEvent, toolEvent } from './normalize.ts'
 import { PANE_ID, PANE_TITLE, renderPane } from './pane.tsx'
 import { observe } from './runtime.ts'
 import { spinnerFailed } from './spin.ts'
@@ -154,6 +154,12 @@ export const register: Register = (on, options) => {
     const ran = await next(e)
     await seen($, at => callEvents(e, ran, at), options)
     return ran
+  }).catch(($, e, next) => next(e))
+
+  on('agent.spawn', async ($, e, next) => {
+    const r = await next(e)
+    await seen($, at => spawnEvent(e, r, at) ?? [], options)
+    return r
   }).catch(($, e, next) => next(e))
 
   on('turn.start', async ($, e, next) => {

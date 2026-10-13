@@ -4,7 +4,7 @@ import type { On } from 'claude-code'
 
 import type { RunState, TraceEntry } from '../types'
 import { REPORT_TOOL } from '../src/instrument.ts'
-import { callEvents, toolEvent } from '../hooks/normalize.ts'
+import { callEvents, spawnEvent, toolEvent } from '../hooks/normalize.ts'
 import { observe } from '../hooks/runtime.ts'
 import { canSpin, resetSpinnerFaults, spinnerFailed } from '../hooks/spin.ts'
 import type { EnginePort } from '../hooks/runtime.ts'
@@ -297,4 +297,60 @@ test('a /clear forgets the run', { plugins: [PEEK] }, async ($, on) => {
   expect((await runOf($))?.stage).toBe('brainstorm')
   await $.session.end({ reason: 'clear', sessionId: 's1', resume: { id: 's1' } })
   expect(await runOf($)).toBeNull()
+})
+
+// --- agent.spawn ---
+
+const SPAWN = { tool_use_id: 'u1', prompt: 'p', description: 'd', subagentType: 'general-purpose', provider: { plugin: 'engine', tier: 'core' }, fork: false, parentModel: 'm', background: true } as const
+
+test('spawnEvent keeps what a dispatch is and ignores workflow and teammate spawns', () => {
+  expect(spawnEvent({ ...SPAWN, description: 'Implement Task 1: X', parentAgentId: 'p1' }, { model: 'm', agentId: 'a1' }, 9))
+    .toStrictEqual({ kind: 'spawn', agentId: 'a1', description: 'Implement Task 1: X', prompt: 'p', parentAgentId: 'p1', at: 9 })
+  expect(spawnEvent(SPAWN, { model: 'm' }, 9)).toBeUndefined()
+  expect(spawnEvent({ ...SPAWN, isTeammate: true }, { model: 'm', agentId: 'a1' }, 9)).toBeUndefined()
+  expect(spawnEvent({ ...SPAWN, workflow: { runId: 'w' } as never }, { model: 'm', agentId: 'a1' }, 9)).toBeUndefined()
+})
+
+/** An exec run with its plan loaded, the engine answering a spawn with `impl-1` and the `Agent` call with what `agent` says. */
+async function execWithPlan($: Engine, on: On, agent: unknown) {
+  engine(on)
+  on('agent.spawn', () => ({ model: 'm', agentId: 'impl-1' }))
+  on('fs.read', ($, e) => (e.path.endsWith(`/${PLAN}`) ? { value: PLAN_TEXT } : { deny: `ENOENT: ${e.path}` }))
+  on('tool.call', ($, e) => (e.tool === 'Agent' ? { result: agent } : shell(`${WORKSPACE}\n`)))
+  await $.tool.call({ tool: 'Bash', command: `bash ${SCRIPTS}/sdd-workspace ${PLAN}` })
+}
+
+const trailOf = (s: RunState | null, n: string) => s?.tasks.find(t => t.n === n)?.trail.map(p => p.phase)
+
+test('a foreground dispatch is seen when it starts', { plugins: [PEEK] }, async ($, on) => {
+  await execWithPlan($, on, { status: 'completed', agentId: 'impl-1', content: [{ type: 'text', text: '- **Status:** DONE' }] })
+  await $.agent.spawn({ ...SPAWN, description: 'Implement Task 1: Modèle' })
+  const started = await runOf($)
+  expect(trailOf(started, '1')?.at(-1)).toBe('writing')
+  expect(started?.agents['impl-1']).toMatchObject({ role: 'implementer', isRunning: true })
+
+  await $.tool.call({ tool: 'Agent', description: 'Implement Task 1: Modèle', prompt: 'p' })
+  const done = await runOf($)
+  expect(trailOf(done, '1')?.filter(p => p === 'writing')).toHaveLength(1)
+  expect(done?.tasks.find(t => t.n === '1')?.lastStatus).toBe('DONE')
+})
+
+test('a background dispatch seen at spawn and at its call counts once', { plugins: [PEEK] }, async ($, on) => {
+  await execWithPlan($, on, { status: 'async_launched', agentId: 'impl-1' })
+  await $.agent.spawn({ ...SPAWN, description: 'Implement Task 1: Modèle' })
+  await $.tool.call({ tool: 'Agent', description: 'Implement Task 1: Modèle', prompt: 'p' })
+  const s = await runOf($)
+  expect(trailOf(s, '1')?.filter(p => p === 'writing')).toHaveLength(1)
+  expect(s?.agents['impl-1']?.isRunning).toBe(true)
+})
+
+test('every trace line says which event produced it', async ($, on) => {
+  engine(on, { SP_STATUSBAR_TRACE: '/tmp/trace.jsonl' })
+  on('tool.call', () => ({ result: { type: 'create' } }))
+  on('ui.notify', () => ({ value: { isSent: true, channel: 'terminal_bell' } }))
+  const writes: { path: string; text: string }[] = []
+  on('fs.write', ($, e) => { writes.push(e); return { value: undefined } })
+  await planReady($)
+  const entries = (writes[writes.length - 1]?.text ?? '').trimEnd().split('\n').map(l => JSON.parse(l) as TraceEntry)
+  expect(entries.map(e => e.via)).toEqual(['skill', 'tool', 'turn-end'])
 })

@@ -117,6 +117,8 @@ export function detect(e: ObservedEvent, s: RunState | null): Detection {
         ? { type: 'plan-loaded', path: e.path, tasks: parsePlan(e.text), at: e.at }
         : { type: 'ledger-loaded', lines: parseLedger(e.text), at: e.at })
     case 'tool': return toolUsed(e, s)
+    case 'spawn':
+      return s ? only({ type: 'agent-dispatched', agentId: e.agentId, ...roleOf({ description: e.description, prompt: e.prompt }, s), isRunning: true, at: e.at }) : none()
   }
 }
 
@@ -312,7 +314,9 @@ function agentDispatched(e: ToolEvent, s: RunState, d: Detection) {
   if (!r || typeof r !== 'object' || !('agentId' in r) || typeof r.agentId !== 'string') return
   const agentId = r.agentId
   const status = 'status' in r ? r.status : undefined
-  d.actions.push({ type: 'agent-dispatched', agentId, ...roleOf(e.input, s), isRunning: status === 'async_launched', at: e.at })
+  // An agent seen at its spawn is already dispatched, with its role: the call only brings a foreground answer.
+  const seen = Object.hasOwn(s.agents, agentId) && s.agents[agentId]!.role !== 'unknown'
+  if (!seen) d.actions.push({ type: 'agent-dispatched', agentId, ...roleOf(e.input, s), isRunning: status === 'async_launched', at: e.at })
   if (status === 'completed') d.actions.push({ type: 'agent-reported', agentId, answer: textOf('content' in r ? r.content : undefined), at: e.at })
 }
 
