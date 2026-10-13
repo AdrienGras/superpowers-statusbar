@@ -1,10 +1,17 @@
+// Two rules of the engine's scan of this module, which refuses to load it otherwise; band, pane and rebuild follow them:
+// - `$` is followed only into functions declared in this file, never across an import: helpers in other files get
+//   what `portOf($)` builds (EnginePort), or are hooks passed to `on` by reference.
+// - `read`, `update` and `$.state.*` take only an atom or reference written in the file that uses it, never an
+//   imported one: each such file declares its own `atom({ plugin: 'superpowers-statusbar', key: 'run' } as const, null)`.
+//   Likewise `$.env.get` takes a literal variable name.
+
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, PluginOptions, Register } from 'claude-code'
 
 import type { ObservedEvent } from '../types'
 
-import { instrumentSkill, REPORT_TOOL } from '../src/instrument.ts'
-import { skillName, toolEvent } from './normalize.ts'
+import { REPORT_TOOL } from '../src/instrument.ts'
+import { callEvents, toolEvent } from './normalize.ts'
 import { observe } from './runtime.ts'
 import type { EnginePort } from './runtime.ts'
 
@@ -29,15 +36,15 @@ function portOf($: EngineInterface): EnginePort {
   }
 }
 
-/** Observes the event `event` builds for the current time; neither the clock nor the observation fails the hook. */
-async function seen($: EngineInterface, event: (at: number) => ObservedEvent, options: PluginOptions) {
+/** Observes, in order, the events `events` builds for the current time; neither the clock nor observing fails the hook. */
+async function seen($: EngineInterface, events: (at: number) => ObservedEvent | ObservedEvent[], options: PluginOptions) {
   let at: number
   try {
     at = await $.clock.now()
   } catch {
     return
   }
-  await observe(portOf($), event(at), options)
+  for (const e of [events(at)].flat()) await observe(portOf($), e, options)
 }
 
 export const register: Register = (on, options) => {
@@ -51,7 +58,7 @@ export const register: Register = (on, options) => {
 
   on('skill.prompt', async ($, e, next) => {
     await seen($, at => ({ kind: 'skill', skill: e.skill, at }), options)
-    return next({ ...e, text: instrumentSkill(skillName(e.skill), e.text) })
+    return next(e)
   }).catch(($, e, next) => next(e))
 
   on('tool.call', { tool: REPORT }, async ($, e) => {
@@ -62,7 +69,7 @@ export const register: Register = (on, options) => {
   on('tool.call', async ($, e, next) => {
     if (e.tool === REPORT) return next(e)
     const ran = await next(e)
-    await seen($, at => toolEvent(e, ran, at), options)
+    await seen($, at => callEvents(e, ran, at), options)
     return ran
   }).catch(($, e, next) => next(e))
 

@@ -18,7 +18,12 @@ export function toolEvent(e: ToolCallInput, ran: ToolCallResult, at: number): Ex
   return { kind: 'tool', tool: e.tool, input, ...outcome, ...(e.agentId ? { agentId: e.agentId } : {}), at }
 }
 
-/** A skill's bare name: `superpowers:brainstorming` and `brainstorming` both give `brainstorming`. */
-export function skillName(skill: string): string {
-  return skill.startsWith('superpowers:') ? skill.slice('superpowers:'.length) : skill
+/**
+ * What a finished tool call shows the detectors: a `Skill` call that ran also counts as that skill starting,
+ * observed before the call itself: Claude Code's security plugin skips plugins' `skill.prompt` hooks, which would say it.
+ */
+export function callEvents(e: ToolCallInput, ran: ToolCallResult, at: number): ObservedEvent[] {
+  const call = toolEvent(e, ran, at)
+  const skill = e.tool === 'Skill' && !call.isError ? e.skill : undefined
+  return typeof skill === 'string' ? [{ kind: 'skill', skill, at }, call] : [call]
 }

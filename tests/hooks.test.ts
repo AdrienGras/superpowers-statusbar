@@ -3,8 +3,8 @@ import type { Engine, Plugin } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import type { RunState, TraceEntry } from '../types'
-import { instrumentSkill, REPORT_TOOL } from '../src/instrument.ts'
-import { skillName, toolEvent } from '../hooks/normalize.ts'
+import { REPORT_TOOL } from '../src/instrument.ts'
+import { callEvents, toolEvent } from '../hooks/normalize.ts'
 import { observe } from '../hooks/runtime.ts'
 import type { EnginePort } from '../hooks/runtime.ts'
 import { replay } from '../src/detectors/index.ts'
@@ -52,12 +52,6 @@ async function planReady($: Engine) {
 
 // --- normalize ---
 
-test('skillName drops the superpowers prefix only', () => {
-  expect(skillName('superpowers:brainstorming')).toBe('brainstorming')
-  expect(skillName('brainstorming')).toBe('brainstorming')
-  expect(skillName('other:brainstorming')).toBe('other:brainstorming')
-})
-
 test('toolEvent flattens the call into input and keeps the outcome', () => {
   const e = { tool: 'Bash', tool_use_id: 'u1', agentId: 'a1', requestMeta: {}, command: 'ls' } as const
   expect(toolEvent(e, { result: { stdout: 'x' }, text: 'x', ref: 3 }, 5))
@@ -66,6 +60,16 @@ test('toolEvent flattens the call into input and keeps the outcome', () => {
     .toStrictEqual({ kind: 'tool', tool: 'Bash', input: { command: 'false' }, result: 'exit 1', text: 'exit 1', isError: true, at: 6 })
   expect(toolEvent({ tool: 'Bash', tool_use_id: 'u3', command: 'rm -rf /' }, { deny: 'no' }, 7))
     .toStrictEqual({ kind: 'tool', tool: 'Bash', input: { command: 'rm -rf /' }, text: 'no', isError: true, at: 7 })
+})
+
+test('a Skill call that ran also yields its skill event, first', () => {
+  const e = { tool: 'Skill', tool_use_id: 'u1', skill: 'superpowers:writing-plans' } as const
+  expect(callEvents(e, { result: { success: true } }, 4)).toEqual([
+    { kind: 'skill', skill: 'superpowers:writing-plans', at: 4 },
+    { kind: 'tool', tool: 'Skill', input: { skill: 'superpowers:writing-plans' }, result: { success: true }, at: 4 },
+  ])
+  expect(callEvents(e, { deny: 'no' }, 4)).toHaveLength(1)
+  expect(callEvents({ tool: 'Bash', tool_use_id: 'u2', command: 'ls' }, { result: 'x' }, 4)).toHaveLength(1)
 })
 
 // --- observe ---
@@ -125,15 +129,11 @@ test('session.start registers the report tool and the command', async ($, on) =>
   expect(commands).toEqual([{ name: 'sp-progress', description: 'Ouvre ou ferme le pane de progression superpowers' }])
 })
 
-test('skill.prompt for superpowers:writing-plans returns the instrumented text', { plugins: [PEEK] }, async ($, on) => {
+test('skill.prompt observes the skill and leaves its text alone', { plugins: [PEEK] }, async ($, on) => {
   engine(on)
   const r = await $.skill.prompt({ skill: 'superpowers:writing-plans', text: SKILL_TEXT })
-  expect(r.text).toBe(instrumentSkill('writing-plans', SKILL_TEXT))
-  expect(r.text).toContain('- `drafting`: you are writing the plan')
+  expect(r.text).toBe(SKILL_TEXT)
   expect((await runOf($))?.stage).toBe('plan')
-
-  expect((await $.skill.prompt({ skill: 'brainstorming', text: SKILL_TEXT })).text).toBe(instrumentSkill('brainstorming', SKILL_TEXT))
-  expect((await $.skill.prompt({ skill: 'superpowers:systematic-debugging', text: SKILL_TEXT })).text).toBe(SKILL_TEXT)
 })
 
 test('report_phase calls are answered by the mod and update the run', { plugins: [PEEK] }, async ($, on) => {
@@ -145,6 +145,26 @@ test('report_phase calls are answered by the mod and update the run', { plugins:
   expect(r).toEqual({ result: 'ok' })
   expect(reached).toEqual([])
   expect((await runOf($))?.stagePhase).toBe('awaiting-approval')
+})
+
+test('a Skill call and its skill.prompt enter the stage once', { plugins: [PEEK] }, async ($, on) => {
+  engine(on)
+  on('tool.call', () => ({ result: { success: true } }))
+  const enter = async (skill: string) => {
+    await $.skill.prompt({ skill, text: SKILL_TEXT })
+    await $.tool.call({ tool: 'Skill', skill })
+  }
+  await enter('superpowers:brainstorming')
+  const first = await runOf($)
+  expect(first?.stage).toBe('brainstorm')
+  await enter('superpowers:brainstorming')
+  expect(await runOf($)).toEqual(first)
+
+  await enter('superpowers:subagent-driven-development')
+  await enter('superpowers:subagent-driven-development')
+  const s = await runOf($)
+  expect(s).toMatchObject({ id: first?.id, stage: 'exec', mode: 'sdd' })
+  expect(s?.milestones.filter(m => m.stage === 'exec')).toHaveLength(1)
 })
 
 test('a Bash sdd-workspace call starts exec and reads the plan through $.fs', { plugins: [PEEK] }, async ($, on) => {
@@ -192,7 +212,7 @@ test('a failing observer never breaks the tool call', { plugins: [PEEK] }, async
   expect(ran.isError).toBeUndefined()
   expect(await runOf($)).toBeNull()
   expect((await $.skill.prompt({ skill: 'superpowers:writing-plans', text: SKILL_TEXT })).text)
-    .toBe(instrumentSkill('writing-plans', SKILL_TEXT))
+    .toBe(SKILL_TEXT)
 })
 
 test('the trace file gets one JSON line per action when SP_STATUSBAR_TRACE is set', async ($, on) => {
