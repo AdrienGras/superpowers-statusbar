@@ -61,7 +61,11 @@ export type Action =
   | { type: 'turn-started'; at: number }
   | { type: 'turn-ended'; at: number }
 export type Detection = { actions: Action[]; reads: FileRequest[] }
-export type TraceEntry = { at: number; action: Action['type']; stage?: Stage; mode?: Mode; task?: string; phase?: TaskPhase; waiting?: WaitReason }
+/** `phases`: the task events the action added, in order, across tasks (its `phase` only shows the last one of its task). */
+export type TraceEntry = {
+  at: number; action: Action['type']; stage?: Stage; mode?: Mode; task?: string; phase?: TaskPhase; waiting?: WaitReason
+  phases?: { task: string; phase: TaskPhase }[]
+}
 
 declare module 'claude-code' {
   interface PluginState {

@@ -33,8 +33,9 @@ function step(prev: RunState | null, e: ObservedEvent): Step {
   let next = prev
   const entries: TraceEntry[] = []
   for (const a of d.actions) {
+    const before = next
     next = reduce(next, a)
-    entries.push(traceEntry(a, next))
+    entries.push(traceEntry(a, next, before))
   }
   return { prev, next, entries, reads: d.reads }
 }

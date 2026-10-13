@@ -4,6 +4,7 @@ import type { Action, ReportedPhase, RunState } from '../types'
 import { REPORT_TOOL } from '../src/instrument.ts'
 import { traceEntry } from '../src/trace.ts'
 import { replay } from '../src/detectors/index.ts'
+import { reduce } from '../src/reduce.ts'
 import { DIRECT_RUN, FILES } from './fixtures/runs.ts'
 
 const ALL_PHASES: readonly ReportedPhase[] = [
@@ -62,4 +63,18 @@ test('traceEntry carries the current task and its last phase', () => {
   const waiting: RunState = { ...s, waiting: { reason: 'blocked', task: '2', since: 9 } }
   expect(traceEntry({ type: 'turn-ended', at: 9 }, waiting)).toMatchObject({ task: '2', waiting: 'blocked' })
   expect(traceEntry({ type: 'turn-started', at: 10 }, null)).toEqual({ at: 10, action: 'turn-started' })
+})
+
+test('traceEntry lists the task events the action added, across tasks', () => {
+  const upToRefactor = DIRECT_RUN.findIndex(e => e.kind === 'tool' && e.input.phase === 'refactor')
+  const before = must(replay(DIRECT_RUN.slice(0, upToRefactor + 1), FILES))
+  const verified: Action = { type: 'task-verified', task: '1', isOk: true, at: 11 }
+  const after = reduce(before, verified)
+  // One action, two events: the entry's `phase` only shows the last, `phases` shows both.
+  expect(traceEntry(verified, after, before)).toMatchObject({
+    task: '1', phase: 'done', phases: [{ task: '1', phase: 'verify' }, { task: '1', phase: 'done' }],
+  })
+  // Nothing added, or no previous state given: no `phases`.
+  expect(traceEntry({ type: 'turn-ended', at: 12 }, after, after).phases).toBeUndefined()
+  expect(traceEntry(verified, after).phases).toBeUndefined()
 })

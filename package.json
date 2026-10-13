@@ -8,6 +8,7 @@
     "typecheck": "tsc -p . && tsc -p tsconfig.scripts.json",
     "contract": "node scripts/contract-check.ts",
     "local": "node scripts/local-fixtures.ts",
+    "e2e": "bash scripts/e2e.sh",
     "validate": "claude plugin validate ."
   },
   "devDependencies": {
