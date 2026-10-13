@@ -158,12 +158,14 @@ test('detect notices the workspace removal', () => {
   expect(detect(bash(`rm -rf ${WS}/task-1-brief.md`), state('exec')).actions).toEqual([])
 })
 
-test('detect finishes the branch on merge, push or PR during finishing', () => {
-  for (const cmd of ['git merge feat/x', 'git push -u origin feat/x', 'cd /repo && gh pr create --fill']) {
+test('detect finishes the branch on merge, push, PR or discard during finishing', () => {
+  for (const cmd of ['git merge feat/x', 'git push -u origin feat/x', 'cd /repo && gh pr create --fill', 'git branch -D feat/x']) {
     expect(detect(bash(cmd), state('finishing')).actions).toEqual([{ type: 'branch-finished', at: AT }])
   }
   expect(detect(bash('git merge feat/x'), state('exec')).actions).toEqual([])
   expect(detect(bash('git merge-base main HEAD'), state('finishing')).actions).toEqual([])
+  expect(detect(bash('git branch -D feat/x'), state('exec')).actions).toEqual([])
+  expect(detect(bash('git branch --show-current'), state('finishing')).actions).toEqual([])
   expect(detect(bash('git push', 'rejected', { isError: true }), state('finishing')).actions).toEqual([])
 })
 

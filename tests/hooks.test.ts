@@ -126,6 +126,22 @@ test('observe keeps a concurrent write and notifies from the pair it replaced', 
   expect(raced.world.notes).toEqual([])
 })
 
+test('keeping the branch as-is ends the run with no further notification', async () => {
+  const finishing = replay([{ kind: 'skill', skill: 'superpowers:finishing-a-development-branch', at: 1 }])
+  const { world, port: p } = port(finishing)
+  const events = [
+    { kind: 'turn-end', answer: 'What would you like to do?', at: 2 },
+    { kind: 'turn-start', at: 3 },
+    { kind: 'turn-end', answer: 'Keeping branch feat/x.', at: 4 },
+    { kind: 'turn-start', at: 5 },
+    { kind: 'turn-end', answer: 'Anything else?', at: 6 },
+  ] as const
+  for (const e of events) await observe(p, e, { notifications: true })
+  expect(world.stored).toMatchObject({ stage: 'done', finishedAt: 4 })
+  expect(world.stored?.waiting).toBeUndefined()
+  expect(world.notes).toEqual(['ready for your test · finishing menu'])
+})
+
 // --- hooks ---
 
 test('session.start registers the report tool and the command', async ($, on) => {

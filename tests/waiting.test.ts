@@ -94,6 +94,37 @@ test('turn-started clears waiting', () => {
   expect(s.waiting).toBeUndefined()
 })
 
+test('a turn that answers the finishing menu without a finishing action ends the run', () => {
+  const answered = must(run(null, [
+    { type: 'stage-entered', stage: 'finishing', at: 1 }, ended(2), { type: 'turn-started', at: 3 },
+  ]))
+  const kept = must(reduce(answered, ended(4)))
+  expect(kept).toMatchObject({ stage: 'done', finishedAt: 4 })
+  expect(kept.waiting).toBeUndefined()
+  expect(notificationFor(answered, kept)).toBeUndefined()
+  const later = must(run(kept, [{ type: 'turn-started', at: 5 }, ended(6)]))
+  expect(later).toMatchObject({ stage: 'done', finishedAt: 4 })
+  expect(later.waiting).toBeUndefined()
+})
+
+test('a turn end in finishing before the menu was answered still waits on it', () => {
+  // The finishing skill entered mid-turn: the turn that shows the menu is not an answer to it.
+  const s = must(run(null, [
+    { type: 'stage-entered', stage: 'final-review', at: 1 }, ended(2), { type: 'turn-started', at: 3 },
+    { type: 'stage-entered', stage: 'finishing', at: 4 }, ended(5),
+  ]))
+  expect(s).toMatchObject({ stage: 'finishing', waiting: { reason: 'finishing-menu', since: 5 } })
+})
+
+test('a merge after the menu ends the run on the merge', () => {
+  const s = must(run(null, [
+    { type: 'stage-entered', stage: 'finishing', at: 1 }, ended(2), { type: 'turn-started', at: 3 },
+    { type: 'branch-finished', at: 4 }, ended(5),
+  ]))
+  expect(s).toMatchObject({ stage: 'done', finishedAt: 4 })
+  expect(s.waiting).toBeUndefined()
+})
+
 test('notificationFor fires once per wait and never for brainstorm questions', () => {
   const base = must(run(null, [{ type: 'stage-entered', stage: 'finishing', at: 1 }]))
   const waiting = must(reduce(base, ended(2)))

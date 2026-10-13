@@ -140,8 +140,8 @@ export function reduce(s: RunState | null, a: Action): RunState | null {
     case 'branch-finished': return { ...setStage(s, 'done', a.at), finishedAt: a.at }
     case 'turn-started': {
       if (!s.waiting) return s
-      const { waiting: _cleared, ...rest } = s
-      return rest
+      const { waiting: cleared, ...rest } = s
+      return s.stage === 'finishing' && cleared.reason === 'finishing-menu' ? { ...rest, isMenuAnswered: true } : rest
     }
     case 'turn-ended': return turnEnded(s, a)
   }
@@ -163,9 +163,13 @@ function waitFor(s: RunState): Pick<Waiting, 'reason' | 'task'> | undefined {
   }
 }
 
-/** A main-loop turn ended: the run waits for Adrien unless a background agent is still working. */
+/**
+ * A main-loop turn ended: the run waits for Adrien unless a background agent is still working. In finishing, the
+ * turn that answered the menu ends the run when no merge, push, PR or discard did already: the branch is kept as-is.
+ */
 function turnEnded(s: RunState, a: ActionOf<'turn-ended'>): RunState {
   const { waiting: _previous, ...rest } = s
+  if (s.stage === 'finishing' && s.isMenuAnswered) return { ...setStage(rest, 'done', a.at), finishedAt: a.at }
   if (Object.values(s.agents).some(r => r.isRunning)) return rest
   const w = waitFor(s)
   return w ? { ...rest, waiting: { ...w, since: a.at } } : rest

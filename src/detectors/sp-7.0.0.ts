@@ -59,6 +59,8 @@ export const MARKERS: readonly Marker[] = [
   marker('ledger.task-ruling', `${SDD}/SKILL.md`, '`Task <N>: Ruling: <finding> — <what you decided and why>`'),
   marker('finishing.merge', 'skills/finishing-a-development-branch/SKILL.md', 'git merge <feature-branch>'),
   marker('finishing.push', 'skills/finishing-a-development-branch/SKILL.md', 'git push -u origin <feature-branch>'),
+  marker('finishing.discard', 'skills/finishing-a-development-branch/SKILL.md', 'git branch -D <feature-branch>'),
+  marker('finishing.keep', 'skills/finishing-a-development-branch/SKILL.md', '3. Keep the branch as-is'),
 ]
 
 // --- detection ---
@@ -79,7 +81,7 @@ const REPORTED_PHASES: ReadonlySet<string> = new Set<ReportedPhase>([
 const REPORT_TOOL = 'mcp__superpowers-statusbar__report_phase'
 
 const RM_WORKSPACE = /\brm\s+-[a-zA-Z]*[rR][a-zA-Z]*\s+(?:--\s+)?["']?[^\s"';&|]*\.superpowers\/sdd\/[^\s"'/;&|]+\/?["']?(?=$|[\s;&|])/
-const FINISH = /(?:^|[\s;&|(])(?:git\s+(?:-C\s+\S+\s+)?(?:merge|push)|gh\s+pr\s+create)(?=$|[\s;&|)])/
+const FINISH = /(?:^|[\s;&|(])(?:git\s+(?:-C\s+\S+\s+)?(?:merge|push|branch\s+-D)|gh\s+pr\s+create)(?=$|[\s;&|)])/
 
 const none = (): Detection => ({ actions: [], reads: [] })
 const only = (a: Action): Detection => ({ actions: [a], reads: [] })

@@ -32,6 +32,8 @@ export type RunState = {
   agents: Record<string, AgentRecord>
   waiting?: Waiting; decisions: Decision[]
   finalReview?: FinalReview; finishedAt?: number
+  /** In finishing, a turn started while the run waited on the finishing menu: the person answered it. */
+  isMenuAnswered?: boolean
 }
 export type LedgerLine =
   | { kind: 'complete'; task: string }
