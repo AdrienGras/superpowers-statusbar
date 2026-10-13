@@ -9,7 +9,7 @@ Superpowers 7.0.0 is required: the mod recognises the scripts, the subagent disp
 - **A band above the prompt**, on one line. During execution:
 
   ```
-  ⠋ exec SDD ▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱ 7/15 · Task 7 « Ledger parser » · review · fix 2/5 · 42m
+  ⠋ exec SDD ▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱ 7/15 · Task 7: Ledger parser · review · fix 2/5 · 42m
   ```
 
   Before execution, the line gives the stage and its phase (`● brainstorming · conversation`, `● brainstorming · builder check`, `● plan · drafting`). While the run works, its mark is a spinner where the surface can animate one (terminal and desktop). When the run waits for an answer, the line becomes one highlighted block, ` WAITING · <reason> `. When the width runs short, the band drops the elapsed time first, then the task title, then the bar. Outside a superpowers run, the band shows nothing. Its colours follow your Claude Code theme.

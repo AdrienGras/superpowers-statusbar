@@ -6,7 +6,7 @@ import type { RunState, TraceEntry } from '../types'
 import { REPORT_TOOL } from '../src/instrument.ts'
 import { callEvents, toolEvent } from '../hooks/normalize.ts'
 import { observe } from '../hooks/runtime.ts'
-import { canSpin, spinnerFailed } from '../hooks/spin.ts'
+import { canSpin, resetSpinnerFaults, spinnerFailed } from '../hooks/spin.ts'
 import type { EnginePort } from '../hooks/runtime.ts'
 import { replay } from '../src/detectors/index.ts'
 import { PLAN, PLAN_TEXT, WORKSPACE } from './fixtures/runs.ts'
@@ -58,6 +58,8 @@ test('the spinner runs on the terminal and the desktop until it fails there', ()
   spinnerFailed('terminal')
   expect(canSpin('terminal')).toBe(false)
   expect(canSpin('desktop')).toBe(true)
+  resetSpinnerFaults()
+  expect(canSpin('terminal')).toBe(true)
 })
 
 test('toolEvent flattens the call into input and keeps the outcome', () => {

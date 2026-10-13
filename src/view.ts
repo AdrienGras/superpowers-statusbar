@@ -146,7 +146,7 @@ function execBand(s: RunState, now: number, parts: Parts): Segment[] {
     const last = cur.trail[cur.trail.length - 1]
     more.push([
       { text: `Task ${cur.n}`, tone: 'normal' },
-      ...(parts.isTitle ? [{ text: ` « ${cur.title} »`, tone: 'normal' as const }] : []),
+      ...(parts.isTitle ? [{ text: `: ${cur.title}`, tone: 'normal' as const }] : []),
     ])
     more.push([{ text: last ? phaseLabel(last) : '?', tone: 'normal' }])
     if (cur.fixRounds > 0 && last?.phase !== 'fix') {
@@ -256,9 +256,10 @@ function stagesOf(s: RunState): PaneModel['stages'] {
         : s.stagePhase ? REPORTED_LABELS[s.stagePhase] : undefined
       return { label, status: 'active' as const, milestones, ...(detail ? { detail } : {}) }
     }
-    const hasMilestone = s.milestones.some(m => m.stage === stage)
-    // Only the early stages can be legitimately bypassed; later ones are always traversed.
-    if (!hasMilestone && i < STAGES.indexOf('exec')) return { label, status: 'skipped' as const, milestones }
+    const isEntered = s.milestones.some(m => m.stage === stage) || s.stageStartedAt?.[stage] !== undefined
+    // Only the early stages can be legitimately bypassed, and only when the run never entered them; later ones are
+    // always traversed.
+    if (!isEntered && i < STAGES.indexOf('exec')) return { label, status: 'skipped' as const, milestones }
     const duration = stageDuration(s, i)
     return { label, status: 'done' as const, milestones, ...(duration ? { duration } : {}) }
   })

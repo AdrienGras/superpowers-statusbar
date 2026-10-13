@@ -8,6 +8,11 @@ export function spinnerFailed(surface: RenderSurface): void {
   faulted.add(surface)
 }
 
+/** Forgets every fault recorded: for tests, so one test's fault does not reach the next. */
+export function resetSpinnerFaults(): void {
+  faulted.clear()
+}
+
 /** Whether `surface` animates the spinner: terminal and desktop draw a `Client`, unless one failed there. */
 export function canSpin(surface: RenderSurface): surface is 'terminal' | 'desktop' {
   return (surface === 'terminal' || surface === 'desktop') && !faulted.has(surface)

@@ -266,7 +266,6 @@ test('entering exec leaves the pane closed where the band saw no docking surface
   expect(world.opened).toEqual([])
 })
 
-
 test('pane draws one line per stage, mark and label in the colour of where it stands, durations on the right', async ($, on) => {
   const { clock, world } = engine(on)
   await replay($, clock, world, MID_TASK_2)

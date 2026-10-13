@@ -34,7 +34,7 @@ function seven(): RunState {
 
 test('band shows stage, bar, counter, task title, phase, fix round and elapsed', () => {
   expect(text(bandSegments(seven(), NOW, 200))).toBe(
-    '● exec SDD ▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱ 7/15 · Task 7 « Parser du ledger » · review · fix 2/5 · 42m')
+    '● exec SDD ▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱ 7/15 · Task 7: Parser du ledger · review · fix 2/5 · 42m')
 })
 
 test('band drops elapsed, then title, then bar as columns shrink', () => {
@@ -42,9 +42,9 @@ test('band drops elapsed, then title, then bar as columns shrink', () => {
   const full = text(bandSegments(s, NOW, 200))
   const noElapsed = text(bandSegments(s, NOW, full.length - 1))
   expect(noElapsed).not.toContain('42m')
-  expect(noElapsed).toContain('« Parser du ledger »')
+  expect(noElapsed).toContain('Task 7: Parser du ledger')
   const noTitle = text(bandSegments(s, NOW, noElapsed.length - 1))
-  expect(noTitle).not.toContain('«')
+  expect(noTitle).not.toContain('Parser du ledger')
   expect(noTitle).toContain('Task 7')
   expect(noTitle).toContain('▰')
   const noBar = text(bandSegments(s, NOW, noTitle.length - 1))
@@ -56,7 +56,7 @@ test('band drops elapsed, then title, then bar as columns shrink', () => {
 
 test('band does not repeat a fix phase as a fix round', () => {
   const s = execRun(0, 3, { fixRounds: 1, trail: [{ phase: 'fix', round: 1, at: 5 }] })
-  expect(text(bandSegments(s, NOW, 200))).toBe('● exec SDD ▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱ 1/3 · Task 1 « T1 » · fix 1/5 · 42m')
+  expect(text(bandSegments(s, NOW, 200))).toBe('● exec SDD ▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱ 1/3 · Task 1: T1 · fix 1/5 · 42m')
 })
 
 test('band leads with one continuous WAITING block, the counter outside it', () => {
@@ -232,4 +232,15 @@ test('paneModel leaves a stage span unknown when a start is missing', () => {
     ['final review', 'active', undefined], ['finishing', 'todo', undefined], ['done', 'todo', undefined],
   ])
   expect(paneModel({ ...s, stageStartedAt: undefined }, NOW, 40).stages[1]?.duration).toBeUndefined()
+})
+
+test('paneModel marks an early stage skipped only when the run never entered it', () => {
+  const s: RunState = {
+    ...newRun('brainstorm', 1000), stage: 'plan', milestones: [],
+    stageStartedAt: { brainstorm: 1000, plan: 1000 + 5 * MIN },
+  }
+  expect(paneModel(s, NOW, 40).stages.slice(0, 2)).toEqual([
+    { label: 'brainstorming', status: 'done', duration: '5m', milestones: [] },
+    { label: 'plan', status: 'active', milestones: [] },
+  ])
 })
