@@ -7,6 +7,7 @@
     "test": "claude plugin test .",
     "typecheck": "tsc -p . && tsc -p tsconfig.scripts.json",
     "contract": "node scripts/contract-check.ts",
+    "local": "node scripts/local-fixtures.ts",
     "validate": "claude plugin validate ."
   },
   "devDependencies": {
