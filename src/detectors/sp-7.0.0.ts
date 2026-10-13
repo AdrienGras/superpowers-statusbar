@@ -80,7 +80,6 @@ const REPORTED_PHASES: ReadonlySet<string> = new Set<ReportedPhase>([
 
 const REPORT_TOOL = 'mcp__superpowers-statusbar__report_phase'
 
-const RM_WORKSPACE = /\brm\s+-[a-zA-Z]*[rR][a-zA-Z]*\s+(?:--\s+)?["']?[^\s"';&|]*\.superpowers\/sdd\/[^\s"'/;&|]+\/?["']?(?=$|[\s;&|])/
 const FINISH = /(?:^|[\s;&|(])(?:git\s+(?:-C\s+\S+\s+)?(?:merge|push|branch\s+-D)|gh\s+pr\s+create)(?=$|[\s;&|)])/
 
 const none = (): Detection => ({ actions: [], reads: [] })
@@ -160,6 +159,45 @@ function fileWritten(e: ToolEvent, s: RunState, d: Detection) {
 
 // --- Bash ---
 
+const trimSlashes = (path: string) => path.replace(/\/+$/, '')
+
+/**
+ * Whether `command` is a recursive `rm` of exactly `workspace`: given in full, as a relative path the workspace
+ * ends with (`.superpowers/sdd/<name>`), or as a `$VAR` / `${VAR}` assigned it earlier in the same command.
+ */
+export function removesWorkspace(command: string, workspace: string): boolean {
+  const target = trimSlashes(workspace)
+  if (!target) return false
+  const vars = new Map<string, string>()
+  for (const segment of command.split(/&&|\|\||[;&|\n]/)) {
+    let words: string[] = segment.match(/"[^"]*"|'[^']*'|\S+/g) ?? []
+    let assignment: RegExpExecArray | null
+    while (words.length > 0 && (assignment = /^([A-Za-z_]\w*)=(.*)$/s.exec(words[0]!))) {
+      vars.set(assignment[1]!, unquote(assignment[2]!))
+      words = words.slice(1)
+    }
+    if (words[0] !== 'rm') continue
+    let isRecursive = false
+    let isOptions = true
+    const paths: string[] = []
+    for (const word of words.slice(1)) {
+      if (isOptions && word === '--') { isOptions = false; continue }
+      if (isOptions && /^-[A-Za-z]+$/.test(word)) { if (/[rR]/.test(word)) isRecursive = true; continue }
+      if (isOptions && word === '--recursive') { isRecursive = true; continue }
+      if (isOptions && word.startsWith('-')) continue
+      paths.push(unquote(word))
+    }
+    if (!isRecursive || paths.length !== 1) continue
+    const arg = trimSlashes(paths[0]!)
+    const variable = /^\$(?:\{(\w+)\}|(\w+))$/.exec(arg)
+    if (variable) {
+      if (vars.get(variable[1] ?? variable[2]!) !== undefined && trimSlashes(vars.get(variable[1] ?? variable[2]!)!) === target) return true
+    } else if (arg === target) return true
+    else if (arg.includes('.superpowers/sdd/') && target.endsWith(`/${arg.replace(/^\.\//, '')}`)) return true
+  }
+  return false
+}
+
 /** Text the tool printed: `result.stdout` when the result carries one, else the rendered text. */
 function outputOf(e: ToolEvent): string {
   const r = e.result
@@ -197,12 +235,11 @@ function bashRan(e: ToolEvent, s: RunState | null): Detection {
   const out = outputOf(e)
   const isOk = !e.isError
 
-  const ws = scriptArgs(command, 'sdd-workspace')
-  const given = ws?.[0]
+  const given = scriptArgs(command, 'sdd-workspace')?.find(a => !a.startsWith('-'))
   if (given && isOk) {
     const workspace = workspaceLine(out)?.replace(/\/+$/, '')
     const plan = planFrom(given, workspace)
-    if (!s || isBeforeExec(s)) d.actions.push({ type: 'stage-entered', stage: 'exec', at: e.at })
+    if (!s || isBeforeExec(s) || s.stage === 'done') d.actions.push({ type: 'stage-entered', stage: 'exec', at: e.at })
     if (workspace) d.actions.push({ type: 'workspace-found', path: workspace, planPath: plan, at: e.at })
     d.reads.push({ role: 'plan', path: plan })
     if (workspace) d.reads.push({ role: 'ledger', path: `${workspace}/progress.md` })
@@ -220,7 +257,7 @@ function bashRan(e: ToolEvent, s: RunState | null): Detection {
     d.actions.push({ type: 'task-verified', task: done[1]!, isOk: isOk && out.includes('ledger: Task'), at: e.at })
   }
 
-  if (isOk && RM_WORKSPACE.test(command)) d.actions.push({ type: 'workspace-removed', at: e.at })
+  if (isOk && s.workspace && removesWorkspace(command, s.workspace)) d.actions.push({ type: 'workspace-removed', at: e.at })
   if (isOk && s.stage === 'finishing' && FINISH.test(command)) d.actions.push({ type: 'branch-finished', at: e.at })
   return d
 }
@@ -250,8 +287,8 @@ function roleOf(input: Record<string, unknown>, s: RunState): Role {
   if (isFinalReviewTime && first.startsWith('You are a Senior Code Reviewer')) return { role: 'final-reviewer' }
   // Real runs also word the final review their own way, in English or French: any review once every task is
   // done, except the dispatch that fixes its findings.
-  const isAfterTasks = s.stage === 'final-review' || (s.stage === 'exec' && s.tasks.length > 0 && s.tasks.every(t => t.status === 'done'))
-  if (isAfterTasks && /review|revue/i.test(description) && !/\bfix|correct|corrig/i.test(description)) return { role: 'final-reviewer' }
+  const isAfterTasks = s.stage === 'final-review' || (s.stage === 'exec' && s.isPlanLoaded && s.tasks.length > 0 && s.tasks.every(t => t.status === 'done'))
+  if (isAfterTasks && /(?<!\p{L})(?:review|revue)/iu.test(description) && !/\bfix|correct|corrig/i.test(description)) return { role: 'final-reviewer' }
   return { role: 'other' }
 }
 

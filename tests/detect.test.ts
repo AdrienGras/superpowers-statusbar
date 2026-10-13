@@ -3,6 +3,7 @@ import { test, expect } from 'claude-code/testing'
 import type { ObservedEvent, RunState, Stage } from '../types'
 import { detect } from '../src/detectors/index.ts'
 import { newRun } from '../src/reduce.ts'
+import { removesWorkspace } from '../src/detectors/sp-7.0.0.ts'
 
 const AT = 50
 const WS = '/repo/.superpowers/sdd/2026-01-01-recettes'
@@ -167,9 +168,10 @@ test('detect verifies a task on task-done from its ledger line', () => {
 })
 
 test('detect notices the workspace removal', () => {
-  expect(detect(bash(`rm -rf ${WS}`), state('final-review')).actions).toEqual([{ type: 'workspace-removed', at: AT }])
-  expect(detect(bash('rm -rf .superpowers/sdd/recettes/'), state('exec')).actions).toEqual([{ type: 'workspace-removed', at: AT }])
-  expect(detect(bash(`rm -rf ${WS}/task-1-brief.md`), state('exec')).actions).toEqual([])
+  const known = (stage: Stage) => state(stage, { workspace: WS })
+  expect(detect(bash(`rm -rf ${WS}`), known('final-review')).actions).toEqual([{ type: 'workspace-removed', at: AT }])
+  expect(detect(bash('rm -rf .superpowers/sdd/2026-01-01-recettes/'), known('exec')).actions).toEqual([{ type: 'workspace-removed', at: AT }])
+  expect(detect(bash(`rm -rf ${WS}/task-1-brief.md`), known('exec')).actions).toEqual([])
 })
 
 test('detect finishes the branch on merge, push, PR or discard during finishing', () => {
@@ -231,7 +233,7 @@ test('detect takes any review dispatched once every task is done as the final re
     return a?.type === 'agent-dispatched' ? { role: a.role, task: a.task } : undefined
   }
   const task = (n: string, status: 'active' | 'done') => ({ n, title: n, steps: 1, status, fixRounds: 0, trail: [] })
-  const allDone = state('exec', { tasks: [task('1', 'done'), task('2', 'done')] })
+  const allDone = state('exec', { isPlanLoaded: true, tasks: [task('1', 'done'), task('2', 'done')] })
   const midExec = state('exec', { tasks: [task('1', 'done'), task('2', 'active')] })
   expect(role('Whole-branch code review', allDone)).toEqual({ role: 'final-reviewer' })
   expect(role('Final REVIEW of text-utils', state('final-review'))).toEqual({ role: 'final-reviewer' })
@@ -292,4 +294,65 @@ test('detect parses plan and ledger files', () => {
     .toEqual([{ type: 'plan-loaded', path: PLAN_PATH, tasks: [{ n: '1', title: 'A', steps: 1 }], at: AT }])
   expect(detect({ kind: 'file', role: 'ledger', path: `${WS}/progress.md`, text: 'Task 1: complete (x)\nRuling: r', at: AT }, s).actions)
     .toEqual([{ type: 'ledger-loaded', lines: [{ kind: 'complete', task: '1' }, { kind: 'ruling', text: 'r' }], at: AT }])
+})
+
+// --- v0.1.1 edge cases ---
+
+const SDD_SCRIPT = 'bash /home/u/sp/skills/subagent-driven-development/scripts/sdd-workspace'
+
+test('workspace removal is recognised in its usual spellings', () => {
+  const s = state('exec', { workspace: WS })
+  for (const command of [
+    `rm -rf ${WS}`,
+    `rm -fr '${WS}/'`,
+    `rm -r -f -- "${WS}"`,
+    `WS=${WS}; rm -rf "$WS"`,
+    `WS="${WS}" && rm -rf "\${WS}"`,
+    'cd /repo && rm -rf .superpowers/sdd/2026-01-01-recettes',
+  ]) {
+    expect(detect(bash(command), s).actions).toContainEqual({ type: 'workspace-removed', at: AT })
+    expect(removesWorkspace(command, WS)).toBe(true)
+  }
+})
+
+test("only the run's workspace counts", () => {
+  const s = state('exec', { workspace: WS })
+  for (const command of ['rm -rf /repo/.superpowers/sdd/other', 'rm -rf "$WS"', `rm -f ${WS}/progress.md`]) {
+    expect(detect(bash(command), s).actions.map(a => a.type)).not.toContain('workspace-removed')
+  }
+  expect(detect(bash(`rm -rf ${WS}`), state('exec')).actions).toEqual([])
+})
+
+test('sdd-workspace takes the first non-flag argument as the plan', () => {
+  const e = bash(`${SDD_SCRIPT} --quiet ${PLAN_PATH}`, `${WS}\n`)
+  expect(detect(e, state('exec', { mode: 'sdd' })).reads).toContainEqual({ role: 'plan', path: PLAN_READ })
+  const help = detect(bash(`${SDD_SCRIPT} --help`, 'Usage: sdd-workspace PLAN_FILE\n'), state('plan'))
+  expect(help).toEqual(empty)
+})
+
+test('a preview dispatch is not the final review', () => {
+  const s = state('exec', {
+    isPlanLoaded: true,
+    tasks: [{ n: '1', title: 'T', steps: 1, status: 'done', fixRounds: 0, trail: [] }],
+  })
+  const roleOf = (description: string) => {
+    const a = detect(agent({ description, prompt: 'x' }, asyncResult('a1')), s).actions[0]
+    return a && a.type === 'agent-dispatched' ? a.role : undefined
+  }
+  expect(roleOf('Preview the landing page')).toBe('other')
+  expect(roleOf('Revue finale du code')).toBe('final-reviewer')
+  expect(roleOf('Re-review final')).toBe('final-reviewer')
+})
+
+test('tasks are not all done while the plan is unread', () => {
+  const s = state('exec', { tasks: [{ n: '1', title: 'T', steps: 1, status: 'done', fixRounds: 0, trail: [] }] })
+  const a = detect(agent({ description: 'Review the changes', prompt: 'x' }, asyncResult('a1')), s).actions[0]
+  expect(a && a.type === 'agent-dispatched' ? a.role : undefined).toBe('other')
+})
+
+test('sdd-workspace after a finished run starts a new exec run', () => {
+  for (const extra of [{}, { agentId: 'a9' }]) {
+    const e = bash(`${SDD_SCRIPT} ${PLAN_PATH}`, `${WS}\n`, extra)
+    expect(detect(e, state('done')).actions[0]).toEqual({ type: 'stage-entered', stage: 'exec', at: AT })
+  }
 })

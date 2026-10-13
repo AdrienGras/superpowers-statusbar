@@ -2,7 +2,7 @@ import { test, expect } from 'claude-code/testing'
 
 import type { RunState } from '../types'
 import { replay } from '../src/detectors/index.ts'
-import { SDD_RUN, DIRECT_RUN, FILES, PLAN, WORKSPACE } from './fixtures/runs.ts'
+import { SDD_RUN, DIRECT_RUN, FILES, PLAN, PLAN2, WORKSPACE, SECOND_PLAN_EVENTS } from './fixtures/runs.ts'
 
 const must = (s: RunState | null): RunState => {
   if (!s) throw new Error('expected a run')
@@ -58,4 +58,13 @@ test('replaying serves successive versions of a file and repeats the last one', 
   expect(decisions(1).map(d => d.text)).toEqual(['b'])
   expect(decisions(2).map(d => d.text)).toEqual(['c'])
   expect(must(replay([...events, touch(3)], { ...FILES, [ledger]: versions })).decisions.map(d => d.text)).toEqual(['c'])
+})
+
+test('a second plan after a finished run is a new run', () => {
+  const first = must(replay(SDD_RUN, FILES))
+  const s = must(replay([...SDD_RUN, ...SECOND_PLAN_EVENTS], FILES))
+  expect(s.id).not.toBe(first.id)
+  expect(s.stage).toBe('exec')
+  expect(s.planPath).toBe(`/repo/${PLAN2}`)
+  expect(s.tasks.map(t => t.title)).toEqual(['Modèle Menu'])
 })

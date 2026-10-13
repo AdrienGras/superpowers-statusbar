@@ -135,18 +135,18 @@ Marqueurs utilisés (superpowers 7.0.0) :
 |---|---|
 | Write vers `docs/superpowers/specs/*-design.md` | spec écrite |
 | Write vers `docs/superpowers/plans/*.md` | plan écrit ; on le parse |
-| Bash `sdd-workspace PLAN` → ligne de sortie finissant par `/.superpowers/sdd/<nom>` | début de l'exécution, emplacement du workspace ; le plan est relu. Un chemin de plan relatif se lit depuis la racine du dépôt où vit le workspace (le chemin du workspace moins `/.superpowers/sdd/<nom>`), pas depuis le dossier de la session, qui diffère dans un worktree *(décidé pendant l'implémentation)* |
+| Bash `sdd-workspace PLAN` → ligne de sortie finissant par `/.superpowers/sdd/<nom>` | début de l'exécution, emplacement du workspace ; le plan est relu. Un chemin de plan relatif se lit depuis la racine du dépôt où vit le workspace (le chemin du workspace moins `/.superpowers/sdd/<nom>`), pas depuis le dossier de la session, qui diffère dans un worktree *(décidé pendant l'implémentation)*. Le plan est le premier argument qui ne commence pas par `-`. Appelé après un run `done`, il ouvre un nouveau run en exécution : `done` compte comme pas de run *(v0.1.1)* |
 | Bash `task-brief PLAN N` → `wrote …/task-N-brief.md: L lines` | SDD : début de la tâche N |
 | Agent `Implement Task N: …` | SDD : écriture |
 | Agent `Review Task N (spec + quality)` | SDD : relecture |
 | SendMessage vers l'implémenteur enregistré, ou Agent sans description de modèle après une relecture | SDD : fix round (1 à 3 en reprise, 4 et 5 en nouvel agent) |
 | Agent `Re-review Task N fix round R` | SDD : re-review du round R |
-| Agent `Review code changes` (ou prompt `You are a Senior Code Reviewer`) en exécution ; à défaut, tout dispatch dont la description contient `review` ou `revue` une fois toutes les tâches terminées, hors corrections (`fix`, `correct`, `corrig`) *(décidé pendant l'implémentation)* | revue finale |
+| Agent `Review code changes` (ou prompt `You are a Senior Code Reviewer`) en exécution ; à défaut, tout dispatch dont la description contient le mot `review` ou `revue` (pas collé à une lettre : `Preview` n'en est pas un) une fois le plan lu et toutes ses tâches terminées, hors corrections (`fix`, `correct`, `corrig`) *(décidé pendant l'implémentation ; v0.1.1 pour le mot entier et le plan lu)* | revue finale |
 | Bash `task-start PLAN N` → `brief:` / `base:` | exécution directe : début de la tâche N |
 | Bash `task-done PLAN N BASE -- cmd` → `ledger: Task N: complete …` ou `NOT recorded` | exécution directe : fin (ou échec) de la tâche N |
 | Résultat d'implémenteur `**Status:** BLOCKED` | attente : implémenteur bloqué |
 | Rapport de relecteur : la ligne `**Task quality:**` fait foi ; un `❌` ne compte que si elle manque *(décidé pendant l'implémentation)* | relecture propre ou à corriger |
-| `rm -rf …/.superpowers/sdd/<slug>` | workspace supprimé, fin de l'exécution |
+| `rm` récursif (`-r`, `-R`, `-rf`, `-fr`, `--recursive`, avec ou sans `--`) d'un seul chemin qui est le workspace du run : chemin complet, chemin relatif contenant `.superpowers/sdd/` dont le workspace est le suffixe, ou `$VAR` / `${VAR}` assignée à ce workspace plus tôt dans la même commande ; sans workspace connu, rien *(v0.1.1)* | workspace supprimé, fin de l'exécution |
 | Skill `finishing-a-development-branch` | fin de branche ; son menu = attente |
 | En fin de branche : Bash `git merge`, `git push`, `gh pr create` ou `git branch -D` | run terminé (fusion, PR ou abandon) |
 | En fin de branche : un tour qui répond au menu se termine sans aucune de ces commandes *(décidé pendant l'implémentation)* | run terminé : branche gardée telle quelle (option 3). Coût accepté : une réponse au menu qui n'est pas un choix termine aussi le run |
