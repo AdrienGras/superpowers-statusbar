@@ -27,11 +27,6 @@ STAMP=$(date +%Y-%m-%d-%H%M%S)
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/sp-e2e.XXXXXX")
 echo "superpowers $VERSION ($SP), dossier de travail : $TMP"
 
-# Désactive chaque superpowers@… installé, pour que seule la version testée (--plugin-dir) soit chargée.
-SETTINGS="$TMP/settings.json"
-jq '{ enabledPlugins: ((.enabledPlugins // {}) | with_entries(select(.key | startswith("superpowers@")) | .value = false)) }' \
-  "$HOME/.claude/settings.json" > "$SETTINGS" 2>/dev/null || echo '{ "enabledPlugins": {} }' > "$SETTINGS"
-
 prompt() {
   local skill=subagent-driven-development
   [ "$1" = direct ] && skill=executing-plans
@@ -51,24 +46,26 @@ for mode in "${MODES[@]}"; do
   # Une branche de travail, comme un vrai run : sur la branche principale, la fin de branche peut être sautée.
   git -C "$repo" checkout -q -b feat/text-utils
 
+  # Isolé de la configuration personnelle : --setting-sources project,local ignore les réglages utilisateur, donc
+  # ses hooks (une réécriture des commandes y changeait ce que voient les permissions), ses plugins installés (dont
+  # un autre superpowers) et son CLAUDE.md ; l'authentification reste. Seuls le mod et la version testée sont chargés.
   # Pas de bypassPermissions : un agent sans surveillance avec toutes les permissions sur la machine, c'est trop large.
   # acceptEdits (Read, Write, Edit dans le dossier du run) et une liste d'outils limitée à ce que le run demande :
   # les scripts de la version de superpowers testée, node, git, npm test, et la suppression du workspace du plan
   # (`rm -rf <workspace>`, chemin exact). Toute autre commande Bash est refusée ; le modèle passe alors par Write/Edit.
-  # `rtk git` : un hook utilisateur (RTK) réécrit `git …` en `rtk git …` avant le contrôle des permissions.
   # Les règles de chemin acceptent `..` : elles cadrent un modèle de bonne foi, elles ne sont pas une frontière de sécurité.
   workspace=.superpowers/sdd/2026-01-01-text-utils
   allowed=(
     Read Write Edit Skill Agent Task SendMessage ToolSearch mcp__superpowers-statusbar__report_phase
     "Bash(bash $SP/skills/*)" "Bash($SP/skills/*)"
-    "Bash(node:*)" "Bash(git:*)" "Bash(rtk git:*)" "Bash(npm test)" "Bash(npm test *)"
+    "Bash(node:*)" "Bash(git:*)" "Bash(npm test)" "Bash(npm test *)"
     "Bash(rm -rf $workspace)" "Bash(rm -rf $repo/$workspace)"
   )
 
   echo "E2E $mode : claude -p en cours…"
   (cd "$repo" && SP_STATUSBAR_TRACE="$trace" claude -p \
     --plugin-dir "$ROOT" --plugin-dir "$SP" \
-    --settings "$SETTINGS" \
+    --setting-sources project,local \
     --permission-mode acceptEdits --allowedTools "${allowed[@]}" \
     --model sonnet \
     --output-format stream-json --verbose \
@@ -77,7 +74,7 @@ for mode in "${MODES[@]}"; do
 
   problems=()
   [ "$status" -eq 0 ] || problems+=("claude -p a terminé avec le code $status")
-  # Le fichier de settings est pris en compte : un seul plugin superpowers, celui du dossier testé.
+  # L'isolation tient : un seul plugin superpowers, celui du dossier testé.
   loaded=$(jq -r 'select(.type == "system" and .subtype == "init") | .plugins[] | select(.name == "superpowers") | .path' "$stream" | sort -u)
   [ "$loaded" = "$SP" ] || problems+=("superpowers chargés : ${loaded:-aucun} (attendu : $SP seul)")
   # Le mod a vu l'exécution démarrer.
