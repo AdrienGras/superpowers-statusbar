@@ -1,46 +1,46 @@
 # superpowers-statusbar
 
-Mod Claude Code qui affiche la progression d'un run [superpowers](https://github.com/obra/superpowers) : l'étape en cours (brainstorming, plan, exécution, revue finale, fin de branche), la tâche du plan, la boucle d'implémentation et de revue, et ce qui attend une réponse de votre part.
+A Claude Code mod that shows the progress of a [superpowers](https://github.com/obra/superpowers) run: the current stage (brainstorming, plan, execution, final review, finishing), the plan's task, the implementation and review loop, and what is waiting for an answer from you.
 
-Superpowers 7.0.0 est requis : le mod reconnaît les scripts, les dispatchs de subagents et le ledger tels que cette version les écrit.
+Superpowers 7.0.0 is required: the mod recognises the scripts, the subagent dispatches and the ledger as that version writes them.
 
-## Ce que fait le mod
+## What the mod does
 
-- **Une bande au-dessus du prompt**, sur une ligne. Pendant l'exécution :
+- **A band above the prompt**, on one line. During execution:
 
   ```
-  ● exec SDD ▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱ 7/15 · Task 7 « Parser du ledger » · relecture · fix 2/5 · 42 min
+  ⠋ exec SDD ▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱ 7/15 · Task 7 « Ledger parser » · review · fix 2/5 · 42m
   ```
 
-  Avant l'exécution, la ligne donne l'étape et sa phase (`● brainsto · conversation`, `● plan · rédaction`). Quand le run attend une réponse, un badge `T'ATTEND` passe en tête avec la raison. Quand la largeur manque, la bande retire d'abord le temps écoulé, puis le titre de la tâche, puis la barre. Hors run superpowers, la bande n'affiche rien.
+  Before execution, the line gives the stage and its phase (`● brainstorming · conversation`, `● brainstorming · builder check`, `● plan · drafting`). While the run works, its mark is a spinner where the surface can animate one (terminal and desktop). When the run waits for an answer, the line becomes one highlighted block, ` WAITING · <reason> `. When the width runs short, the band drops the elapsed time first, then the task title, then the bar. Outside a superpowers run, the band shows nothing. Its colours follow your Claude Code theme.
 
-- **Un pane** en cinq blocs : les étapes, les tâches (statut, durée, fix rounds), le fil de la tâche en cours, les décisions et points mis de côté tirés du ledger, et une estimation du temps restant. Un bloc vide n'est pas affiché.
+- **A pane** in five blocks: the stages (with how long each finished one took, and the milestones of brainstorming and plan), the tasks (status, duration, fix rounds), the current task's phases one per line (passed, under way, still expected), the decisions and set-aside points taken from the ledger, and an estimate of the time left. An empty block is not shown.
 
-- **Des notifications** quand le run passe en attente : plan prêt et choix du mode d'exécution, implémenteur bloqué ou breaker des 5 fix rounds, menu de fin de branche. Les questions du brainstorming et la validation de la spec ne notifient pas.
+- **Notifications** when the run starts waiting: plan ready and execution mode to pick, implementer blocked or the 5-fix-round breaker tripped, finishing menu. Brainstorming questions and the spec approval do not notify.
 
-Le mod suit le run à partir des événements de Claude Code : les appels d'outils (scripts de superpowers, écritures de la spec et du plan, dispatchs de subagents) et leurs résultats, les fins de tour et les skills lancés par l'outil `Skill`. Pour les phases que ces événements ne montrent pas (conversation, rédaction et relecture de la spec ou du plan, RED/GREEN/refactor), le mod expose au modèle un outil, `report_phase`, dont la description lui demande de signaler chaque changement de phase pendant les skills `brainstorming`, `writing-plans` et `test-driven-development`. Le mod ne modifie pas le texte des skills.
+The mod follows the run from Claude Code's events: tool calls (superpowers scripts, writes of the spec and the plan, subagent dispatches) and their results, turn ends, and the skills launched through the `Skill` tool. For the phases those events do not show (conversation, drafting and review of the spec or the plan, RED/GREEN/refactor), the mod exposes a tool to the model, `report_phase`, whose description asks it to report each phase change during the `brainstorming`, `writing-plans` and `test-driven-development` skills. The mod does not change the skills' text.
 
-Limite connue : un skill lancé en tapant `/superpowers:…` n'est vu qu'au travers du hook `skill.prompt`, que le plugin de sécurité intégré à Claude Code court-circuite pour les plugins installés au niveau utilisateur. Là où c'est le cas, ce lancement peut passer inaperçu ; le mod rattrape le run dès qu'un appel d'outil reconnaissable suit (par exemple le script `sdd-workspace` au début de l'exécution).
+Known limit: a skill launched by typing `/superpowers:…` is only seen through the `skill.prompt` hook, which the security plugin built into Claude Code bypasses for plugins installed at user level. Where that is the case, such a launch can go unnoticed; the mod catches up with the run as soon as a recognisable tool call follows (for example the `sdd-workspace` script at the start of execution).
 
 ## Installation
 
-Dans une session Claude Code, au prompt d'un terminal :
+In a Claude Code session, at a terminal's prompt:
 
 ```
 /plugin install superpowers-statusbar --marketplace AdrienGras/superpowers-statusbar
 ```
 
-Répondez `y` pour ajouter le marketplace, puis choisissez le scope (utilisateur par défaut).
+Answer `y` to add the marketplace, then pick the scope (user by default).
 
-## Développement
+## Development
 
-Pour lancer une session avec le mod chargé depuis une copie locale du dépôt :
+To start a session with the mod loaded from a local copy of the repository:
 
 ```
-claude --plugin-dir /chemin/vers/superpowers-statusbar
+claude --plugin-dir /path/to/superpowers-statusbar
 ```
 
-Vérifications :
+Checks:
 
 ```
 claude plugin test .
@@ -48,14 +48,14 @@ npx tsc -p .
 claude plugin validate .
 ```
 
-La variable d'environnement `SP_STATUSBAR_TRACE`, si elle nomme un fichier, y fait écrire une ligne JSON par action reconnue.
+The `SP_STATUSBAR_TRACE` environment variable, when it names a file, makes the mod write one JSON line per recognised action to it.
 
 ### Tests
 
-- `claude plugin test .` : tests unitaires, sur des runs synthétiques (`tests/fixtures/`).
-- `npm run contract -- <dossier superpowers>` : vérifie que les marqueurs que le mod reconnaît existent dans une version de superpowers.
-- `npm run local` : passe les plans et ledgers réels déposés dans `fixtures-local/` (gitignoré) au parseur.
-- `npm run e2e -- <dossier superpowers> [sdd|direct|all]` : e2e local avec un vrai `claude -p`. Le script copie `e2e/fixture` (une mini bibliothèque Node et son plan de 3 tâches) dans un dossier temporaire, y fait exécuter le plan en mode SDD (`subagent-driven-development`), en mode direct (`executing-plans`) ou les deux, avec le mod et la version de superpowers donnée chargés par `--plugin-dir`. Le run est isolé de votre configuration (`--setting-sources project,local`) : ni vos hooks, ni vos plugins installés, ni votre `CLAUDE.md` utilisateur ; seuls le mod et la version testée sont chargés. Le run n'a pas toutes les permissions : `acceptEdits` (écritures dans le dossier du run seulement) et une liste d'outils limitée (lecture de fichiers, skills, subagents, l'outil du mod, les scripts de la version de superpowers testée, `node --test`, `git`, `npm test` et la suppression du workspace du plan) ; les autres commandes Bash sont refusées. Cette liste n'est pas une frontière de sécurité : `npm test` et `node --test` exécutent du code que le modèle écrit, et `git` permet d'agir sur d'autres dépôts et de lancer des commandes par alias. Elle guide un modèle coopératif, rien de plus : traitez le run comme non sandboxé, et ne le lancez que sur une machine où c'est acceptable. Il vérifie ensuite la trace du mod. Erreurs : étapes exec puis revue finale, les 3 tâches terminées, relecture de chaque tâche en SDD, vérification de chaque tâche en direct, et, si le run a atteint la fin de branche, son menu en dernier. Avertissements, qui décrivent le déroulé choisi par le modèle et ne font pas échouer le run : pas de RED puis GREEN en direct, fin de branche jamais atteinte. Il affiche `E2E <mode> : OK` (avec les avertissements éventuels) ou la liste des problèmes, et copie chaque trace dans `fixtures-local/e2e/`. Le run coûte des tokens (modèle `sonnet`) et prend plusieurs minutes par mode ; il demande `claude` et `jq`.
+- `claude plugin test .`: unit tests, on synthetic runs (`tests/fixtures/`).
+- `npm run contract -- <superpowers folder>`: checks that the markers the mod recognises exist in a superpowers version.
+- `npm run local`: runs the real plans and ledgers dropped in `fixtures-local/` (gitignored) through the parser.
+- `npm run e2e -- <superpowers folder> [sdd|direct|all]`: local e2e with a real `claude -p`. The script copies `e2e/fixture` (a small Node library and its 3-task plan) to a temporary folder and has the plan executed there in SDD mode (`subagent-driven-development`), in inline mode (`executing-plans`) or both, with the mod and the given superpowers version loaded through `--plugin-dir`. The run is isolated from your configuration (`--setting-sources project,local`): none of your hooks, installed plugins or user `CLAUDE.md`; only the mod and the tested version are loaded. The run does not get every permission: `acceptEdits` (writes in the run's folder only) and a limited tool list (reading files, skills, subagents, the mod's tool, the scripts of the tested superpowers version, `node --test`, `git`, `npm test` and removing the plan's workspace); other Bash commands are refused. This list is not a security boundary: `npm test` and `node --test` run code the model writes, and `git` can act on other repositories and run commands through aliases. It guides a cooperative model, nothing more: treat the run as unsandboxed, and only launch it on a machine where that is acceptable. The script then checks the mod's trace. Errors: the stages exec then final review, the 3 tasks done, a review of each task in SDD, a verification of each task inline, and, if the run reached finishing, its menu last. Warnings, which describe the flow the model chose and do not fail the run: no RED then GREEN inline, finishing never reached. It prints `E2E <mode>: OK` (with any warnings) or the list of problems, and copies each trace to `fixtures-local/e2e/`. The run costs tokens (model `sonnet`) and takes several minutes per mode; it needs `claude` and `jq`.
 
   ```
   npm run e2e -- ~/.claude/plugins/cache/superpowers-marketplace/superpowers/7.0.0 all
@@ -63,19 +63,19 @@ La variable d'environnement `SP_STATUSBAR_TRACE`, si elle nomme un fichier, y fa
 
 ## `/sp-progress`
 
-`/sp-progress` ouvre le pane, ou le ferme s'il est ouvert.
+`/sp-progress` opens the pane, or closes it if it is open.
 
-Le pane s'ouvre aussi tout seul au début de l'exécution du plan, mais seulement là où il se place à côté du transcript (terminal en plein écran). Ailleurs, il attend la commande.
+The pane also opens by itself when the plan's execution starts, but only where it sits beside the transcript (fullscreen terminal). Elsewhere, it waits for the command.
 
-## Option `notifications`
+## `notifications` option
 
-L'option `notifications` (activée par défaut) coupe les notifications du mod quand elle est désactivée. Elle se règle à l'installation.
+The `notifications` option (on by default) turns the mod's notifications off when disabled. It is set at installation.
 
-Les notifications passent par votre canal habituel, celui que nomme le réglage `preferredNotifChannel` de Claude Code (`/config`, **Local notifications**).
+Notifications go through your usual channel, the one Claude Code's `preferredNotifChannel` setting names (`/config`, **Local notifications**).
 
-## Couper la notification générique de Claude Code
+## Turning off Claude Code's generic notification
 
-Claude Code envoie sa propre notification quand une tâche se termine ou qu'une permission attend. Pendant un run, elle peut doubler celle du mod. D'après la documentation de Claude Code au moment de l'écriture :
+Claude Code sends its own notification when a task ends or a permission is waiting. During a run, it can double the mod's. According to Claude Code's documentation at the time of writing:
 
-- `preferredNotifChannel` réglé sur `"notifications_disabled"` coupe les notifications de Claude Code, **mais aussi celles du mod**, qui passent par le même canal. Si vous ne voulez garder que l'une des deux, gardez celles de Claude Code et désactivez l'option `notifications` du mod.
-- Les hooks `Notification` de vos réglages s'exécutent en plus de la notification intégrée, sans la remplacer : ils ne permettent pas de la supprimer. Ils reçoivent aussi les notifications du mod (champ `plugin_notification`), ce qui permet, si vous notifiez par vos propres hooks, de traiter différemment celles du mod et celles de Claude Code (le matcher porte sur le type de notification, par exemple `idle_prompt` ou `permission_prompt`).
+- `preferredNotifChannel` set to `"notifications_disabled"` turns off Claude Code's notifications, **but also the mod's**, which go through the same channel. If you only want to keep one of the two, keep Claude Code's and disable the mod's `notifications` option.
+- The `Notification` hooks in your settings run in addition to the built-in notification, without replacing it: they cannot suppress it. They also receive the mod's notifications (`plugin_notification` field), which lets you, if you notify through your own hooks, handle the mod's and Claude Code's differently (the matcher works on the notification type, for example `idle_prompt` or `permission_prompt`).
