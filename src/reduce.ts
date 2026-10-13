@@ -200,7 +200,7 @@ function planLoaded(s: RunState, a: ActionOf<'plan-loaded'>): RunState {
     return { ...p, status: 'todo', fixRounds: 0, trail: [] }
   })
   const steps = a.tasks.reduce((sum, t) => sum + t.steps, 0)
-  const next = { ...(s.stage === 'brainstorm' ? setStage(s, 'plan', a.at) : s), planPath: a.path, tasks }
+  const next = { ...(s.stage === 'brainstorm' ? setStage(s, 'plan', a.at) : s), planPath: a.path, tasks, isPlanLoaded: a.tasks.length > 0 }
   return addMilestone(
     next,
     { stage: 'plan', label: `${a.tasks.length} tasks · ${steps} steps`, at: a.at },

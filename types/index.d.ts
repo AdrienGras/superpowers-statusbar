@@ -32,6 +32,8 @@ export type RunState = {
   agents: Record<string, AgentRecord>
   waiting?: Waiting; decisions: Decision[]
   finalReview?: FinalReview; finishedAt?: number
+  /** A plan was read and listed tasks: until then the tasks are only those the scripts started, their total unknown. */
+  isPlanLoaded?: boolean
   /** In finishing, a turn started while the run waited on the finishing menu: the person answered it. */
   isMenuAnswered?: boolean
 }

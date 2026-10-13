@@ -134,6 +134,15 @@ test('plan-loaded replaces tasks and keeps done ones', () => {
   expect(must(s).milestones.filter(m => m.stage === 'plan')).toEqual([{ stage: 'plan', label: '3 tasks · 8 steps', at: 50 }])
 })
 
+test('only a plan read with tasks makes the task total known', () => {
+  const started = must(run(null, [
+    { type: 'stage-entered', stage: 'exec', mode: 'sdd', at: 10 }, { type: 'task-started', task: '1', at: 11 },
+  ]))
+  expect(started.isPlanLoaded).toBeUndefined()
+  expect(must(reduce(started, { type: 'plan-loaded', path: '/p/plan.md', tasks: [], at: 12 })).isPlanLoaded).toBe(false)
+  expect(must(reduce(started, PLAN)).isPlanLoaded).toBe(true)
+})
+
 test('task-started adds a task missing from the plan', () => {
   const s = reduce(execRun(), { type: 'task-started', task: '9', at: 30 })
   expect(task(s, '9')).toEqual({

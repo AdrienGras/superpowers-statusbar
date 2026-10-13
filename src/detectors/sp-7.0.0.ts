@@ -181,6 +181,16 @@ function workspaceLine(text: string): string | undefined {
   return text.split(/\r?\n/).map(l => l.trim()).find(l => /(?:^|\/)\.superpowers\/sdd\/[^/\s]+\/*$/.test(l))
 }
 
+/**
+ * Where to read the plan `sdd-workspace` was given: a relative path from the repository root the workspace sits in
+ * (`<root>/.superpowers/sdd/<name>`), which a worktree session's cwd is not.
+ */
+function planFrom(plan: string, workspace: string | undefined): string {
+  if (plan.startsWith('/') || !workspace) return plan
+  const root = workspace.replace(/\/\.superpowers\/sdd\/[^/]+$/, '')
+  return root && root !== workspace ? `${root}/${plan.replace(/^\.\//, '')}` : plan
+}
+
 function bashRan(e: ToolEvent, s: RunState | null): Detection {
   const d = none()
   const command = str(e.input.command) ?? ''
@@ -188,9 +198,10 @@ function bashRan(e: ToolEvent, s: RunState | null): Detection {
   const isOk = !e.isError
 
   const ws = scriptArgs(command, 'sdd-workspace')
-  const plan = ws?.[0]
-  if (plan && isOk) {
+  const given = ws?.[0]
+  if (given && isOk) {
     const workspace = workspaceLine(out)?.replace(/\/+$/, '')
+    const plan = planFrom(given, workspace)
     if (!s || isBeforeExec(s)) d.actions.push({ type: 'stage-entered', stage: 'exec', at: e.at })
     if (workspace) d.actions.push({ type: 'workspace-found', path: workspace, planPath: plan, at: e.at })
     d.reads.push({ role: 'plan', path: plan })

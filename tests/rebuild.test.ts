@@ -104,7 +104,7 @@ test('rebuild of a mid-run transcript restores the current task', { plugins: [PE
   })
   await start($)
   const s = await runOf($)
-  expect(s).toMatchObject({ stage: 'exec', mode: 'sdd', planPath: PLAN, workspace: WORKSPACE })
+  expect(s).toMatchObject({ stage: 'exec', mode: 'sdd', planPath: `/repo/${PLAN}`, workspace: WORKSPACE })
   expect(s?.tasks.map(t => [t.n, t.status])).toEqual([['1', 'done'], ['2', 'active']])
   expect(s?.tasks.every(t => t.startedAt === 0 && (t.status !== 'done' || t.doneAt === 0))).toBe(true)
   expect(reads.some(p => p.endsWith(`/${PLAN}`))).toBe(true)

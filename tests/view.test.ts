@@ -20,7 +20,7 @@ function execRun(done: number, total: number, over: Partial<TaskState> = {}): Ru
     if (i === done + 1) return mkTask(i, { status: 'active', startedAt: i * 10 * MIN, ...over })
     return mkTask(i)
   })
-  return { ...newRun('exec', 1000, 'sdd'), startedAt: 1000, tasks }
+  return { ...newRun('exec', 1000, 'sdd'), startedAt: 1000, tasks, isPlanLoaded: true }
 }
 
 const NOW = 1000 + 42 * MIN
@@ -59,6 +59,19 @@ test('band drops elapsed, then title, then bar as columns shrink', () => {
   const tiny = text(bandSegments(s, NOW, 30))
   expect(tiny).toContain('exec SDD')
   expect(tiny).toContain('7/15')
+})
+
+test('band shows an unknown total and no bar until the plan is read', () => {
+  // Tasks known only from the scripts that started them: the plan was never read.
+  const s: RunState = { ...execRun(1, 2), isPlanLoaded: false, tasks: [
+    mkTask(1, { title: '?', status: 'done' }), mkTask(2, { title: '?', status: 'active', startedAt: 5, trail: [{ phase: 'brief', at: 5 }] }),
+  ] }
+  expect(text(bandSegments(s, NOW, 200))).toBe('● exec SDD 2/? · Task 2: ? · brief · 42m')
+  const { isPlanLoaded: _absent, ...stored } = s
+  expect(text(bandSegments(stored, NOW, 200))).toBe('● exec SDD 2/? · Task 2: ? · brief · 42m')
+  const waiting: RunState = { ...s, waiting: { reason: 'other', since: 5 } }
+  expect(text(bandSegments(waiting, NOW, 200))).toBe(' WAITING · your turn  · 2/?')
+  expect(paneModel(s, NOW, 40).stages[2]?.detail).toBe('1/?')
 })
 
 test('band does not repeat a fix phase as a fix round', () => {

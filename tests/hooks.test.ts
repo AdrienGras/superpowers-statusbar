@@ -204,10 +204,10 @@ test('a Bash sdd-workspace call starts exec and reads the plan through $.fs', { 
   on('tool.call', () => shell(`${WORKSPACE}\n`))
   const ran = await $.tool.call({ tool: 'Bash', command: `bash ${SCRIPTS}/sdd-workspace ${PLAN}` })
   expect(ran.text).toBe(`${WORKSPACE}\n`)
-  // The engine resolves the relative plan path against the session's working directory.
-  expect(reads).toEqual([expect.stringMatching(new RegExp(`^/.+/${PLAN}$`)), `${WORKSPACE}/progress.md`])
+  // The relative plan path is read from the repository root the workspace sits in.
+  expect(reads).toEqual([`/repo/${PLAN}`, `${WORKSPACE}/progress.md`])
   const s = await runOf($)
-  expect(s).toMatchObject({ stage: 'exec', workspace: WORKSPACE, planPath: PLAN })
+  expect(s).toMatchObject({ stage: 'exec', workspace: WORKSPACE, planPath: `/repo/${PLAN}` })
   expect(s?.tasks.map(t => [t.n, t.title, t.status])).toEqual([['1', 'Modèle Recette', 'todo'], ['2', 'Repository de recettes', 'todo']])
 })
 

@@ -43,11 +43,11 @@ Task 1: complete (commits a1b2c3d..e4f5a6b, review clean)
 `
 
 /**
- * The plan, and the ledger as successive reads see it: header only when `sdd-workspace` runs
- * on a fresh plan, then task 1 once the run writes it after its review, then the final ledger.
+ * The plan, read from the workspace's repository root, and the ledger as successive reads see it: header only when
+ * `sdd-workspace` runs on a fresh plan, then task 1 once the run writes it after its review, then the final ledger.
  */
 export const FILES: Record<string, string | readonly string[]> = {
-  [PLAN]: PLAN_TEXT,
+  [`${REPO}/${PLAN}`]: PLAN_TEXT,
   [`${WORKSPACE}/progress.md`]: [LEDGER_HEADER, SDD_TASK1_LEDGER, SDD_RUN_LEDGER],
 }
 

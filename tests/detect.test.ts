@@ -7,6 +7,8 @@ import { newRun } from '../src/reduce.ts'
 const AT = 50
 const WS = '/repo/.superpowers/sdd/2026-01-01-recettes'
 const PLAN_PATH = 'docs/superpowers/plans/2026-01-01-recettes.md'
+/** The relative plan path as read: from the repository root the workspace lives in. */
+const PLAN_READ = `/repo/${PLAN_PATH}`
 
 const state = (stage: Stage, extra: Partial<RunState> = {}): RunState => ({ ...newRun(stage, 1), ...extra })
 
@@ -94,9 +96,21 @@ test('detect loads a plan written before exec', () => {
 test('detect reads the workspace path from sdd-workspace output', () => {
   const e = bash(`bash /home/u/sp/skills/subagent-driven-development/scripts/sdd-workspace ${PLAN_PATH}`, `${WS}\n`)
   expect(detect(e, state('exec', { mode: 'sdd' }))).toEqual({
-    actions: [{ type: 'workspace-found', path: WS, planPath: PLAN_PATH, at: AT }],
-    reads: [{ role: 'plan', path: PLAN_PATH }, { role: 'ledger', path: `${WS}/progress.md` }],
+    actions: [{ type: 'workspace-found', path: WS, planPath: PLAN_READ, at: AT }],
+    reads: [{ role: 'plan', path: PLAN_READ }, { role: 'ledger', path: `${WS}/progress.md` }],
   })
+})
+
+test('detect reads a relative plan from the repository the workspace belongs to', () => {
+  const sdd = (plan: string, ws: string) =>
+    detect(bash(`bash /home/u/sp/skills/subagent-driven-development/scripts/sdd-workspace ${plan}`, `${ws}\n`), state('exec', { mode: 'sdd' }))
+  // A worktree: the session's cwd is elsewhere, the workspace names the repository root.
+  const wt = '/home/u/wt/feat-x/.superpowers/sdd/2026-01-01-recettes'
+  expect(sdd(PLAN_PATH, wt).reads).toEqual([
+    { role: 'plan', path: `/home/u/wt/feat-x/${PLAN_PATH}` }, { role: 'ledger', path: `${wt}/progress.md` },
+  ])
+  expect(sdd(`/abs/${PLAN_PATH}`, wt).reads[0]).toEqual({ role: 'plan', path: `/abs/${PLAN_PATH}` })
+  expect(sdd(`./${PLAN_PATH}`, WS).reads[0]).toEqual({ role: 'plan', path: `/repo/${PLAN_PATH}` })
 })
 
 test('detect enters exec on sdd-workspace when the run has not reached it', () => {
@@ -104,9 +118,9 @@ test('detect enters exec on sdd-workspace when the run has not reached it', () =
   const expected = {
     actions: [
       { type: 'stage-entered', stage: 'exec', at: AT },
-      { type: 'workspace-found', path: WS, planPath: PLAN_PATH, at: AT },
+      { type: 'workspace-found', path: WS, planPath: PLAN_READ, at: AT },
     ],
-    reads: [{ role: 'plan', path: PLAN_PATH }, { role: 'ledger', path: `${WS}/progress.md` }],
+    reads: [{ role: 'plan', path: PLAN_READ }, { role: 'ledger', path: `${WS}/progress.md` }],
   }
   expect(detect(e, null)).toEqual(expected)
   expect(detect(e, state('plan'))).toEqual(expected)
@@ -117,8 +131,8 @@ test('detect takes the workspace line, not the last one, from sdd-workspace outp
   const command = `bash /home/u/sp/skills/subagent-driven-development/scripts/sdd-workspace ${PLAN_PATH}; git rev-parse HEAD`
   const found = (out: string) => detect(bash(command, out), state('exec', { mode: 'sdd' }))
   const expected = {
-    actions: [{ type: 'workspace-found', path: WS, planPath: PLAN_PATH, at: AT }],
-    reads: [{ role: 'plan', path: PLAN_PATH }, { role: 'ledger', path: `${WS}/progress.md` }],
+    actions: [{ type: 'workspace-found', path: WS, planPath: PLAN_READ, at: AT }],
+    reads: [{ role: 'plan', path: PLAN_READ }, { role: 'ledger', path: `${WS}/progress.md` }],
   }
   expect(found(`${WS}\n331a016317d6e4d4fdf6594fbee61a7700f0c9a6\n`)).toEqual(expected)
   expect(found(`${WS}/\nfeat/recettes\nREADME.md\npackage.json\nsrc\n`)).toEqual(expected)

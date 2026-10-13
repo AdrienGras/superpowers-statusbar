@@ -124,6 +124,9 @@ function counterOf(s: RunState): number {
   return Math.min(s.tasks.length, done + (currentTask(s) ? 1 : 0))
 }
 
+/** How many tasks the run has: `?` until a plan was read, the tasks then being only those already started. */
+const totalOf = (s: RunState) => (s.isPlanLoaded ? String(s.tasks.length) : '?')
+
 function execBand(s: RunState, now: number, parts: Parts): Segment[] {
   const total = s.tasks.length
   const done = s.tasks.filter(t => t.status === 'done').length
@@ -135,12 +138,12 @@ function execBand(s: RunState, now: number, parts: Parts): Segment[] {
     RUNNING, sep(' '),
     { text: stageLabel(s), tone: 'normal' }, sep(' '),
   ]
-  const bar: Segment[] = !parts.isBar ? [] : [
+  const bar: Segment[] = !parts.isBar || !s.isPlanLoaded ? [] : [
     { text: '▰'.repeat(filled), tone: 'ok' },
     { text: '▱'.repeat(BAR_CELLS - filled), tone: 'normal' },
     sep(' '),
   ]
-  const tail: Segment[] = [{ text: `${counter}/${total}`, tone: 'normal', isBold: true }]
+  const tail: Segment[] = [{ text: `${counter}/${totalOf(s)}`, tone: 'normal', isBold: true }]
   const more: Segment[][] = []
   if (cur) {
     const last = cur.trail[cur.trail.length - 1]
@@ -206,7 +209,7 @@ function waitingBand(s: RunState, columns: number): Segment[] {
     { text: WAIT_BADGE, tone: 'wait', isBold: true },
     { text: ` · ${shown} `, tone: 'wait' },
   ]
-  const counter = `${counterOf(s)}/${s.tasks.length}`
+  const counter = `${counterOf(s)}/${totalOf(s)}`
   if (s.stage === 'exec' && shown === message && WAIT_CHROME + message.length + 3 + counter.length <= columns) {
     out.push(sep(' · '), { text: counter, tone: 'normal', isBold: true })
   }
@@ -252,7 +255,7 @@ function stagesOf(s: RunState): PaneModel['stages'] {
     if (i > cur) return { label, status: 'todo' as const, milestones }
     if (stage === 'done' || (i === cur && s.stage === 'done')) return { label, status: 'done' as const, milestones }
     if (i === cur) {
-      const detail = stage === 'exec' ? `${done}/${s.tasks.length}`
+      const detail = stage === 'exec' ? `${done}/${totalOf(s)}`
         : s.stagePhase ? REPORTED_LABELS[s.stagePhase] : undefined
       return { label, status: 'active' as const, milestones, ...(detail ? { detail } : {}) }
     }

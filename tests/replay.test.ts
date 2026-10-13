@@ -13,7 +13,7 @@ test('replaying an SDD run ends done with every task done and one fix round on t
   const s = must(replay(SDD_RUN, FILES))
   expect(s.stage).toBe('done')
   expect(s.mode).toBe('sdd')
-  expect(s.planPath).toBe(PLAN)
+  expect(s.planPath).toBe(`/repo/${PLAN}`)
   expect(s.tasks.map(t => [t.n, t.status])).toEqual([['1', 'done'], ['2', 'done']])
   expect(s.tasks.map(t => t.fixRounds)).toEqual([0, 1])
   for (const t of s.tasks) expect(t.doneAt! < t.startedAt!).toBe(false)
