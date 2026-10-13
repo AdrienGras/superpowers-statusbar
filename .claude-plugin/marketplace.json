@@ -1,0 +1,5 @@
+{
+  "name": "superpowers-statusbar",
+  "owner": { "name": "Adrien Gras" },
+  "plugins": [{ "name": "superpowers-statusbar", "source": "./" }]
+}

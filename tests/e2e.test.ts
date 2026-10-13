@@ -1,0 +1,96 @@
+import { test, expect } from 'claude-code/testing'
+
+import type { ObservedEvent, RunState, TraceEntry } from '../types'
+import { detect } from '../src/detectors/index.ts'
+import { reduce } from '../src/reduce.ts'
+import { traceEntry } from '../src/trace.ts'
+import { checkTrace } from '../src/e2e.ts'
+import { SDD_RUN, DIRECT_RUN, FILES } from './fixtures/runs.ts'
+
+/** The trace the mod writes for `events`: detect + reduce, one `traceEntry` per action, file reads served from FILES. */
+function traceOf(events: readonly ObservedEvent[]): TraceEntry[] {
+  let s: RunState | null = null
+  const out: TraceEntry[] = []
+  const reads = new Map<string, number>()
+  const contentOf = (path: string): string | undefined => {
+    const entry = FILES[path]
+    if (entry === undefined || typeof entry === 'string') return entry
+    const k = reads.get(path) ?? 0
+    reads.set(path, k + 1)
+    return entry[Math.min(k, entry.length - 1)]
+  }
+  const apply = (e: ObservedEvent) => {
+    const d = detect(e, s)
+    for (const a of d.actions) {
+      const prev: RunState | null = s
+      s = reduce(s, a)
+      out.push(traceEntry(a, s, prev))
+    }
+    for (const r of d.reads) {
+      const text = contentOf(r.path)
+      if (text !== undefined) apply({ kind: 'file', role: r.role, path: r.path, text, at: e.at })
+    }
+  }
+  for (const e of events) apply(e)
+  return out
+}
+
+/** A run cut right after the turn that ends on the finishing menu, where `claude -p` exits. */
+const untilFinishingMenu = (run: readonly ObservedEvent[]) =>
+  run.slice(0, run.findIndex(e => e.kind === 'turn-end' && !e.agentId && /terminée/.test(e.answer)) + 1)
+
+const ok = { errors: [], warnings: [] }
+
+test('checkTrace accepts a well-ordered SDD trace', () => {
+  expect(checkTrace(traceOf(untilFinishingMenu(SDD_RUN)), 'sdd', 2)).toEqual(ok)
+})
+
+test('checkTrace reports a task that skipped review in sdd', () => {
+  const trace = traceOf(untilFinishingMenu(SDD_RUN)).map(e =>
+    e.phases ? { ...e, phases: e.phases.filter(p => !(p.task === '2' && p.phase === 'review')) } : e)
+  expect(checkTrace(trace, 'sdd', 2)).toEqual({ errors: ['task 2: no writing then review before done'], warnings: [] })
+})
+
+test('checkTrace warns when red then green is missing in direct mode', () => {
+  const trace = traceOf(untilFinishingMenu(DIRECT_RUN))
+  expect(checkTrace(trace, 'direct', 2)).toEqual(ok)
+  const swap = { red: 'green', green: 'red' } as const
+  const greenFirst = trace.map(e => e.phases
+    ? { ...e, phases: e.phases.map(p => (p.phase === 'red' || p.phase === 'green' ? { ...p, phase: swap[p.phase] } : p)) }
+    : e)
+  expect(checkTrace(greenFirst, 'direct', 2)).toEqual({ errors: [], warnings: ['no task goes through red then green'] })
+})
+
+test('checkTrace requires the final finishing-menu wait once finishing is reached', () => {
+  // The full run goes on past the menu: the merge ends it, with no wait.
+  expect(checkTrace(traceOf(SDD_RUN), 'sdd', 2))
+    .toEqual({ errors: ['the last entry does not wait on finishing-menu (no wait)'], warnings: [] })
+})
+
+test('checkTrace requires finishing after final-review', () => {
+  const swap = { 'final-review': 'finishing', finishing: 'final-review' } as const
+  const finishingFirst = traceOf(untilFinishingMenu(SDD_RUN)).map(e =>
+    e.stage === 'final-review' || e.stage === 'finishing' ? { ...e, stage: swap[e.stage] } : e)
+  expect(checkTrace(finishingFirst, 'sdd', 2)).toEqual({ errors: ['stage finishing missing after final-review'], warnings: [] })
+})
+
+test('checkTrace only warns when the run never reached finishing', () => {
+  const removed = SDD_RUN.findIndex(e => e.kind === 'tool' && e.tool === 'Bash' && String(e.input.command).startsWith('rm -rf'))
+  expect(checkTrace(traceOf(SDD_RUN.slice(0, removed + 1)), 'sdd', 2))
+    .toEqual({ errors: [], warnings: ['run never reached finishing (model behaviour)'] })
+})
+
+test('checkTrace reports a run cut during execution', () => {
+  const cut = SDD_RUN.findIndex(e => e.kind === 'tool' && e.tool === 'Bash' && String(e.input.command).includes('task-brief') && String(e.input.command).endsWith(' 2'))
+  expect(checkTrace(traceOf(SDD_RUN.slice(0, cut)), 'sdd', 2)).toEqual({
+    errors: ['stage final-review missing after exec', '1 task(s) done out of 2 expected'],
+    warnings: ['run never reached finishing (model behaviour)'],
+  })
+})
+
+test('checkTrace reports an empty trace', () => {
+  expect(checkTrace([], 'sdd', 1)).toEqual({
+    errors: ['stage exec missing', '0 task(s) done out of 1 expected'],
+    warnings: ['run never reached finishing (model behaviour)'],
+  })
+})
