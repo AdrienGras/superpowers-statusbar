@@ -98,6 +98,7 @@ Quand le run attend Adrien, rien ne tourne dans le pane : les marques « en cour
 Ouverture *(mon choix)* :
 - la commande `/sp-progress` ouvre et ferme le pane ;
 - il s'ouvre aussi tout seul au démarrage de l'exécution, seulement là où il serait docké à côté du transcript (`e.viewport.isFullscreen` lu par la bande) ; ailleurs il attend la commande.
+- *(v0.1.1)* Le moteur décide du placement : `$.ui.open` répond `isPlaced: false` quand le terminal est trop étroit (144 colonnes pour un pane non demandé, 110 une fois que la personne l'a demandé). Un pane non placé est refermé (`$.ui.close`) et n'est pas compté ouvert : `/sp-progress` répond `Progress pane cannot be shown here.` et le prochain appel retente l'ouverture au lieu de fermer. Si l'ouverture échoue, la commande répond `Progress pane unavailable.`. La bande ne retient `isFullscreen` que sur les surfaces où elle dessine (terminal, desktop).
 
 La maquette de référence est dans `.superpowers/brainstorm/` (fichier `pane.html`), non versionnée ; la description ci-dessus fait foi.
 

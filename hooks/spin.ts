@@ -17,3 +17,8 @@ export function resetSpinnerFaults(): void {
 export function canSpin(surface: RenderSurface): surface is 'terminal' | 'desktop' {
   return (surface === 'terminal' || surface === 'desktop') && !faulted.has(surface)
 }
+
+/** What `ui.fault` tells of a failed `Client`: only the spinner's own module fails the spinner. */
+export function onSpinnerFault(e: { surface: RenderSurface; module: string }): void {
+  if (e.module.endsWith('spinner.tsx')) spinnerFailed(e.surface)
+}

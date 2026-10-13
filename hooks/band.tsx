@@ -31,8 +31,8 @@ export const isDockingSurface = () => isDockingSeen === true
  * Leaves the band to the engine without a run, while a survey holds it, and on the surfaces it does not draw on.
  */
 export const renderBand: MatchedHook<'ui.render', { component: 'AbovePrompt' }> = async ($, e, next) => {
-  if (e.viewport?.isFullscreen !== undefined) isDockingSeen = e.viewport.isFullscreen
   if (e.props.hasSurvey || (e.surface !== 'terminal' && e.surface !== 'desktop')) return next(e)
+  if (e.viewport?.isFullscreen !== undefined) isDockingSeen = e.viewport.isFullscreen
   const run = await read($, runAtom)
   if (run === null) return next(e)
   const columns = e.props.bodyColumns

@@ -53,18 +53,40 @@ async function apply(port: EnginePort, e: ObservedEvent): Promise<Step> {
   return written.step ?? seen
 }
 
-/** Trace lines written so far by this copy of the module, and the write in flight, so writes land in order. */
+/** Trace lines of this copy of the module since the run began (the file is rewritten whole each time). */
 const traceLines: string[] = []
-let traceWrite: Promise<void> = Promise.resolve()
+let inFlight: Promise<void> | undefined
+let queued: Promise<void> | undefined
+
+/** Forgets the lines so far: a new run (after `/clear`) starts a new trace. */
+export function resetTrace(): void {
+  traceLines.length = 0
+}
+
+/**
+ * Writes every line so far. Writes land in order and coalesce: while one is in flight, the lines that come meanwhile
+ * wait for one more write, which carries them all.
+ */
+function writeTrace(port: EnginePort, path: string): Promise<void> {
+  if (queued) return queued
+  if (inFlight) {
+    queued = inFlight.catch(() => {}).then(() => {
+      queued = undefined
+      return writeTrace(port, path)
+    })
+    return queued
+  }
+  const write = (async () => port.writeFile(path, `${traceLines.join('\n')}\n`))()
+  inFlight = write.finally(() => { inFlight = undefined })
+  return inFlight
+}
 
 async function trace(port: EnginePort, entries: readonly TraceEntry[]) {
   if (entries.length === 0) return
   const path = await port.tracePath()
   if (!path) return
   traceLines.push(...entries.map(entry => JSON.stringify(entry)))
-  const write = traceWrite.then(() => port.writeFile(path, `${traceLines.join('\n')}\n`))
-  traceWrite = write.catch(() => {})
-  await write
+  await writeTrace(port, path)
 }
 
 /** Swallows a side effect's failure: observing never fails the hook that observes. */
@@ -88,8 +110,11 @@ export async function observe(port: EnginePort, e: ObservedEvent, options: Plugi
       port.entered(done.next.stage)
     } catch {}
   }
+  // Started first, awaited last: a notification slow or throwing must not hold back the trace and the reads.
   const text = notificationFor(done.prev, done.next)
-  if (text !== undefined && options.notifications === true) await quietly(port.notify(text, { title: 'superpowers' }))
+  const notified = text !== undefined && options.notifications === true
+    ? quietly((async () => port.notify(text, { title: 'superpowers' }))())
+    : undefined
   await quietly(trace(port, done.entries))
   for (const r of done.reads) {
     let content: string
@@ -100,4 +125,5 @@ export async function observe(port: EnginePort, e: ObservedEvent, options: Plugi
     }
     await observe(port, { kind: 'file', role: r.role, path: r.path, text: content, at: e.at }, options)
   }
+  await notified
 }

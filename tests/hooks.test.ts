@@ -5,7 +5,7 @@ import type { On } from 'claude-code'
 import type { RunState, TraceEntry } from '../types'
 import { REPORT_TOOL } from '../src/instrument.ts'
 import { callEvents, spawnEvent, toolEvent } from '../hooks/normalize.ts'
-import { observe } from '../hooks/runtime.ts'
+import { observe, resetTrace } from '../hooks/runtime.ts'
 import { canSpin, resetSpinnerFaults, spinnerFailed } from '../hooks/spin.ts'
 import type { EnginePort } from '../hooks/runtime.ts'
 import { replay } from '../src/detectors/index.ts'
@@ -368,4 +368,88 @@ test('every trace line says which event produced it', async ($, on) => {
   await planReady($)
   const entries = (writes[writes.length - 1]?.text ?? '').trimEnd().split('\n').map(l => JSON.parse(l) as TraceEntry)
   expect(entries.map(e => e.via)).toEqual(['skill', 'tool', 'turn-end'])
+})
+
+// --- robustness ---
+
+test('a rebuild that fails half-way stores nothing', { plugins: [PEEK] }, async ($, on) => {
+  engine(on)
+  on('tool.register', (_$, e) => ({ value: { tool: `mcp__superpowers-statusbar__${e.name}` } }))
+  on('command.register', (_$, e) => ({ value: { command: e.name } }))
+  on('session.start', (_$, e) => ({ cwd: e.cwd }))
+  on('session.messages', () => ({ value: [
+    { role: 'assistant', text: '', toolUses: [{ tool: 'Skill', input: { skill: 'superpowers:writing-plans' } }] },
+    { role: 'assistant', text: '', toolUses: null },
+  ] as never }))
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  expect(await runOf($)).toBeNull()
+})
+
+test('a notification that throws synchronously leaves the reads and the trace done', async () => {
+  const { port: p, world } = port(planned())
+  const written: string[] = []
+  p.notify = () => { throw new Error('sync') }
+  p.tracePath = async () => '/tmp/t.jsonl'
+  p.writeFile = async (_path, text) => { written.push(text) }
+  await observe(p, { kind: 'turn-end', answer: 'Plan écrit.', at: 5 }, { notifications: true })
+  expect(world.stored?.waiting?.reason).toBe('execution-choice')
+  expect(written).toHaveLength(1)
+  expect(written[0]).toContain('turn-ended')
+})
+
+test('the trace restarts after /clear', async ($, on) => {
+  engine(on, { SP_STATUSBAR_TRACE: '/tmp/trace.jsonl' })
+  on('tool.call', () => ({ result: { success: true } }))
+  const writes: string[] = []
+  on('fs.write', ($, e) => { writes.push(e.text); return { value: undefined } })
+  await $.tool.call({ tool: 'Skill', skill: 'superpowers:brainstorming' })
+  expect(writes[writes.length - 1]?.trimEnd().split('\n')).toHaveLength(1)
+  await $.session.end({ reason: 'clear', sessionId: 's1', resume: { id: 's1' } })
+  await $.tool.call({ tool: 'Skill', skill: 'superpowers:writing-plans' })
+  const lines = (writes[writes.length - 1] ?? '').trimEnd().split('\n').map(l => JSON.parse(l) as TraceEntry)
+  expect(lines.map(l => l.stage)).toEqual(['plan'])
+})
+
+test('the minute timer restarts after its interval ended', async ($, on) => {
+  // mock.clock answers clock.every itself, so this test owns the clock: a refused period ends the interval, with no callback.
+  let now = 1_000_000
+  on('clock.now', () => ({ value: now }))
+  mock.env(on, {})
+  on('tool.call', () => ({ result: { success: true } }))
+  let asked = 0
+  on('clock.every', () => {
+    asked += 1
+    return asked === 1 ? { deny: 'refused period' } : { value: undefined }
+  })
+  await $.tool.call({ tool: 'Skill', skill: 'superpowers:brainstorming' })
+  expect(asked).toBe(1)
+  now += 4 * 60_000
+  await $.tool.call({ tool: 'Skill', skill: 'superpowers:brainstorming' })
+  expect(asked).toBe(2)
+})
+
+const flush = async () => { for (let i = 0; i < 50; i++) await Promise.resolve() }
+
+test('trace writes that overlap coalesce into one more write holding every line', async () => {
+  resetTrace()
+  const { port: p } = port(null)
+  const written: string[] = []
+  let release: () => void = () => {}
+  p.tracePath = async () => '/tmp/t.jsonl'
+  p.writeFile = async (_path, text) => {
+    written.push(text)
+    if (written.length === 1) await new Promise<void>(r => { release = r })
+  }
+  const first = observe(p, { kind: 'skill', skill: 'superpowers:writing-plans', at: 1 }, {})
+  await flush()
+  const others = [
+    observe(p, { kind: 'tool', tool: 'Write', input: { file_path: `/repo/${PLAN}`, content: PLAN_TEXT }, at: 2 }, {}),
+    observe(p, { kind: 'turn-end', answer: 'Plan écrit.', at: 3 }, {}),
+  ]
+  await flush()
+  release()
+  await Promise.all([first, ...others])
+  expect(written).toHaveLength(2)
+  expect(written[1]?.trimEnd().split('\n').length).toBeGreaterThanOrEqual(2)
+  resetTrace()
 })
