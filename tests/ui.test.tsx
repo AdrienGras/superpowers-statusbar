@@ -342,3 +342,21 @@ test('pane draws a still mark where the surface has no spinner', async ($, on) =
     await ui.unmount()
   }
 })
+
+test('pane holds its active marks still while the run waits', async ($, on) => {
+  const { clock, world } = engine(on)
+  await replay($, clock, world, PLAN_READY.slice(0, -1))
+  const working = await mountPane($, 'terminal')
+  expect((await row(working, ' plan')).children)
+    .toMatchObject([{ children: [{ type: 'Client', props: { key: 'stage-spinner' } }, { props: { color: 'warning' } }] }])
+  await working.unmount()
+
+  await replay($, clock, world, PLAN_READY.slice(-1))
+  for (const surface of SURFACES) {
+    const ui = await mountPane($, surface)
+    expect(await ui.find({ type: 'Client' })).toBeUndefined()
+    expect((await row(ui, '● plan')).children)
+      .toMatchObject([{ children: [{ props: { color: 'warning' }, children: ['●'] }, { props: { color: 'warning' } }] }])
+    await ui.unmount()
+  }
+})

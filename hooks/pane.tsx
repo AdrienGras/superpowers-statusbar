@@ -29,7 +29,8 @@ const decisionTag = (d: Decision) => `${DECISION_LABELS[d.kind]}${d.task ? ` · 
  * Draws the run in the pane, in five blocks (stages, tasks, current task, decisions, estimate), each left out
  * when it has nothing to show; the task list fits the surface's height. One line per stage, task and phase of the
  * current task: its mark and label in the colour of where it stands, details in `subtle`, a finished one's duration
- * on the right edge; what is under way turns a spinner (`./spinner.tsx`) where the surface animates one.
+ * on the right edge; what is under way turns a spinner (`./spinner.tsx`) where the surface animates one, unless the
+ * run waits on the person.
  */
 export const renderPane: MatchedHook<'ui.render', { component: 'Pane', requestId: 'sp-progress' }> = async ($, e) => {
   const table = $.ui.resolve(e)
@@ -40,7 +41,8 @@ export const renderPane: MatchedHook<'ui.render', { component: 'Pane', requestId
   const columns = e.props.bodyColumns
   const m = paneModel(run, await $.clock.now(), e.viewport?.rows ?? 24)
 
-  const mark = (status: Mark, spinnerKey: string) => status === 'active' && Client
+  // While the run waits on the person nothing turns: what is under way keeps a still mark.
+  const mark = (status: Mark, spinnerKey: string) => status === 'active' && Client && !run.waiting
     ? <Client key={spinnerKey} module="./spinner.tsx" props={null} width={1} />
     : <Text {...STATUS_TONES[status]}>{MARKS[status]}</Text>
   /** One line: mark, label, `details` in subtle after it, `right` (a duration) against the right edge. */
