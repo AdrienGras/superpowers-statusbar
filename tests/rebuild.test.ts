@@ -111,6 +111,25 @@ test('rebuild of a mid-run transcript restores the current task', { plugins: [PE
   expect(reads).toContain(`${WORKSPACE}/progress.md`)
 })
 
+test('no background agent survives a resume: the next main turn end waits', { plugins: [PEEK] }, async ($, on) => {
+  engine(on)
+  on('turn.complete', (_$, e) => ({ text: e.answer }))
+  const cut = SDD_RUN.findIndex(e => e.kind === 'tool' && e.tool === 'Agent' && String(e.input.description).startsWith('Implement Task 2')) + 1
+  const messages = transcriptOf(SDD_RUN.slice(0, cut)).map(m => ({ ...m, toolUses: m.toolUses.map((u, i) => ({ tool_use_id: `u${i}`, ...u })) }))
+  on('session.messages', () => ({ value: messages }))
+  on('fs.read', (_$, e) => {
+    if (e.path.endsWith(`/${PLAN}`)) return { value: PLAN_TEXT }
+    if (e.path === `${WORKSPACE}/progress.md`) return { value: SDD_TASK1_LEDGER }
+    return { deny: `ENOENT: ${e.path}` }
+  })
+  await start($)
+  const s = await runOf($)
+  expect(Object.keys(s?.agents ?? {})).toContain('impl-2')
+  expect(Object.values(s?.agents ?? {}).some(r => r.isRunning)).toBe(false)
+  await $.turn.complete({ answer: 'Où en est-on ?', durationMs: 1, isAborted: false, turnId: 't', reason: 'answer' })
+  expect((await runOf($))?.waiting).toMatchObject({ reason: 'other' })
+})
+
 test('a run already stored is not rebuilt', { plugins: [PEEK] }, async ($, on) => {
   engine(on)
   on('skill.prompt', (_$, e) => ({ text: e.text }))

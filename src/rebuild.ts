@@ -1,4 +1,4 @@
-import type { ObservedEvent } from '../types'
+import type { ObservedEvent, RunState } from '../types'
 
 /** The part of a `SessionMessage` the rebuild reads; structural, so `src/` imports nothing from `'claude-code'`. */
 export type TranscriptMessage = {
@@ -38,4 +38,14 @@ export function messagesToEvents(messages: readonly TranscriptMessage[]): Observ
     }
   }
   return events
+}
+
+/**
+ * The run as a resume leaves it: no agent still running. Background agents finish through task notifications the
+ * transcript does not replay as turn ends, and none survives the session that launched it.
+ */
+export function stopAgents(s: RunState): RunState {
+  const running = Object.entries(s.agents).filter(([, r]) => r.isRunning)
+  if (running.length === 0) return s
+  return { ...s, agents: { ...s.agents, ...Object.fromEntries(running.map(([id, r]) => [id, { ...r, isRunning: false }])) } }
 }
