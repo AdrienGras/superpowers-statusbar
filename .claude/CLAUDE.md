@@ -34,7 +34,8 @@ src/detectors/sp-7.0.0.ts (détecteurs + MARKERS) ─┤
 - Un hook défini dans un autre fichier et passé directement à `on(...)` se charge sans problème.
 - `skill.prompt` est **contourné** par le plugin de sécurité intégré à Claude Code (`cc-plugin-sec-default`) pour les mods utilisateur. Conséquences :
   - le mod ne réécrit jamais le texte d'un skill ;
-  - l'entrée dans un skill est détectée sur `tool.call` `Skill` ;
+  - l'entrée dans un skill est détectée sur `tool.call` `Skill` (skill lancé par le modèle, porte l'`agentId`) et sur `command.run` (skill tapé `/superpowers:…`) ; `skill.prompt` n'est plus observé ;
+  - les débuts de dispatch viennent de `agent.spawn`, l'appel d'outil `Agent` apportant la réponse en avant-plan ou servant de repli ;
   - les phases (brainstorming, plan, TDD) arrivent par l'outil `mcp__superpowers-statusbar__report_phase`, dont la **description** contient les consignes (`isDeferred: false`).
 - Une réponse de plugin à `tool.call` est `{ result: ... }`. Le `text` de premier niveau est réservé au moteur.
 - Les déclarations de l'API sont dans `.claude-plugin/types/claude-code/index.d.ts` (gitignoré, environ 21 000 lignes, à parcourir avec grep). Le moteur les régénère à chaque chargement du mod via `--plugin-dir`.

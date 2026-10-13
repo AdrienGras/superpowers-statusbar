@@ -1,5 +1,6 @@
 {
   "name": "superpowers-statusbar",
   "owner": { "name": "Adrien Gras" },
+  "description": "Live progress of a superpowers run: a band above the prompt, a side pane and notifications.",
   "plugins": [{ "name": "superpowers-statusbar", "source": "./" }]
 }

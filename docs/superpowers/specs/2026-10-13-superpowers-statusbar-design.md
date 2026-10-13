@@ -30,7 +30,7 @@ Le mod est en lecture seule : il ne pilote rien.
 
 - Suivre un run complet : brainstorming → plan → exécution (SDD ou exécution directe avec TDD) → revue finale → fin de branche.
 - Afficher la bande, le pane et les notifications décrits plus bas.
-- Reconstruire l'état après un démarrage de session, une compaction ou un rechargement du mod.
+- Reconstruire l'état depuis le transcript uniquement sur une session reprise (`--resume`, `--continue`) ; un run stocké survit au rechargement et à la compaction, comme le décrit la section Reconstruction. *(v0.1.1)*
 - Se tester sur trois niveaux, dont un e2e local relançable à chaque nouvelle version de superpowers.
 
 ## Non-objectifs (v1)
