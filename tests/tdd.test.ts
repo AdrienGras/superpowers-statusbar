@@ -257,3 +257,12 @@ test('quoted text and heredoc bodies are never cut into runs', () => {
   expect(redirectTargets('git commit -m "x; npm test > out.txt"', ['npm test'])).toEqual([])
   expect(matchesPlanRun('git commit -F - <<EOF\nnpm test\nEOF', ['npm test'])).toBe(false)
 })
+
+test('flags between a pathless key\'s words stay required', () => {
+  expect(matchesPlanRun('cargo run -p latch --bin api', ['cargo test -p latch --test api'])).toBe(false)
+  expect(matchesPlanRun('cargo build -p latch --bin api', ['cargo test -p latch --test api'])).toBe(false)
+  expect(matchesPlanRun('cargo run -p server -- migrate', ['cargo test -p server --test migrate'])).toBe(false)
+  expect(matchesPlanRun('cargo test -p latch --test api', ['cargo test -p latch --test api'])).toBe(true)
+  expect(matchesPlanRun('npx vitest run', ['npx vitest run --coverage'])).toBe(false)
+  expect(matchesPlanRun('uv run pytest', ['uv run --frozen pytest'])).toBe(true)
+})

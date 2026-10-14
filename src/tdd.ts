@@ -140,8 +140,8 @@ const norm = (word: string) => dropSelector(word).replace(/^\.\//, '')
  * What identifies a plan run: the last two positional words of its first segment that is not a `cd`, up to its
  * first argument path or its first redirection, then the paths right after that one. Leading words are dropped, so
  * a prefix (`rtk`, `docker compose exec php`) never makes the key alone; a key starting on `run` or `exec` keeps the
- * runner before it. A key without a path carries the plan command's own flags (those after its last word), all
- * required. A line with a program that only reads (`rtk git status`) has no key.
+ * runner before it. A key without a path carries the plan command's own flags (those after the key's first word, but
+ * not a runner's option right after `run`/`exec`), all required. A line with a program that only reads (`rtk git status`) has no key.
  */
 interface Key { words: string[]; flags: string[] }
 
@@ -168,7 +168,11 @@ function keyOf(run: string): Key | undefined {
   const end = pathAt < 0 ? collected.length : pathAt + 1
   let from = Math.max(0, end - KEY_WORDS)
   if (from > 0 && VERBS.has(collected[from] ?? '')) from--
-  const own = pathAt < 0 ? flags.filter((f) => f.after === collected.length).map((f) => f.flag) : []
+  // A pathless key keeps the flags after its first word, but not one between a `run`/`exec` and the next key word:
+  // that one belongs to the runner (`uv run --frozen pytest`), as the flags before the key belong to a prefix.
+  const own = pathAt < 0
+    ? flags.filter((f) => f.after > from && !(f.after < collected.length && VERBS.has(collected[f.after - 1] ?? ''))).map((f) => f.flag)
+    : []
   return { words: collected.slice(from), flags: own }
 }
 
