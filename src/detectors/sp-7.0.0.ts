@@ -4,6 +4,8 @@ import type {
 import { ALL_PHASES } from '../instrument.ts'
 import { parsePlan } from '../plan.ts'
 import { parseLedger } from '../ledger.ts'
+import { tddTask } from '../reduce.ts'
+import { isSuperpowersScript, isWorkPath, matchesPlanRun, redirectTargets } from '../tdd.ts'
 
 /** A string superpowers 7.0.0 must still contain for a detection rule to hold. `file` is relative to the plugin root. */
 export type Marker = { id: string; file: string; pattern: RegExp }
@@ -162,7 +164,36 @@ function toolUsed(e: ToolEvent, s: RunState | null): Detection {
   if ((e.tool === 'Write' || e.tool === 'Edit' || e.tool === 'Bash') && s.workspace && mentionsLedger(e.input)) {
     addRead(d, { role: 'ledger', path: `${s.workspace}/progress.md` })
   }
+  observeWork(e, s, d)
   return d
+}
+
+// --- observed work (red / green) ---
+
+const FILE_EDITS: ReadonlySet<string> = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
+
+/**
+ * Whether the call ran: not refused, and either fine or failing with an exit code (a failing test run). A call
+ * refused by permissions or by the shell's own checks ended in error without one.
+ */
+const isExecuted = (e: ToolEvent) => !e.isDenied && (!e.isError || /^Exit code \d+/.test(e.text ?? ''))
+
+/** A write to a work file and/or a run of one of the task's plan commands, by the agent working on that task. */
+function observeWork(e: ToolEvent, s: RunState, d: Detection) {
+  if (s.stage !== 'exec') return
+  const t = tddTask(s, e.agentId)
+  if (!t) return
+  let wrote = false
+  let ran = false
+  if (FILE_EDITS.has(e.tool)) {
+    const path = str(e.input.file_path)
+    wrote = !e.isError && !e.isDenied && !!path && isWorkPath(path)
+  } else if (e.tool === 'Bash' && isExecuted(e)) {
+    const command = str(e.input.command) ?? ''
+    wrote = redirectTargets(command).some(isWorkPath)
+    ran = !isSuperpowersScript(command) && matchesPlanRun(command, t.runs ?? [])
+  }
+  if (wrote || ran) d.actions.push({ type: 'work-observed', task: t.n, ...(e.agentId ? { agentId: e.agentId } : {}), wrote, ran, at: e.at })
 }
 
 function addRead(d: Detection, r: FileRequest) {

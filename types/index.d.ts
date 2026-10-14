@@ -57,7 +57,12 @@ export type LedgerLine =
 export type ObservedEvent =
   | { kind: 'skill'; skill: string; agentId?: string; at: number }
   | { kind: 'command'; command: string; at: number }
-  | { kind: 'tool'; tool: string; input: Record<string, unknown>; text?: string; result?: unknown; isError?: boolean; agentId?: string; at: number }
+  | {
+      kind: 'tool'; tool: string; input: Record<string, unknown>; text?: string; result?: unknown; isError?: boolean
+      /** The call was refused (permission `deny`): it never ran. */
+      isDenied?: true
+      agentId?: string; at: number
+    }
   | { kind: 'spawn'; agentId: string; description: string; prompt: string; parentAgentId?: string; at: number }
   | { kind: 'turn-start'; at: number }
   | { kind: 'turn-end'; agentId?: string; answer: string; at: number }
