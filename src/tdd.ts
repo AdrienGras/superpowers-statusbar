@@ -133,8 +133,8 @@ function basename(word: string): string {
   return word.slice(word.lastIndexOf('/') + 1)
 }
 
-/** A word as a key compares it: without its `::` selector nor a leading `./`. */
-const norm = (word: string) => dropSelector(word).replace(/^\.\//, '')
+/** A word as a key compares it: without its `::` selector nor a leading `./` (kept before a dot: `./...`). */
+const norm = (word: string) => dropSelector(word).replace(/^\.\/(?!\.)/, '')
 
 /**
  * What identifies a plan run: the last two positional words of its first segment that is not a `cd`, up to its
@@ -273,10 +273,17 @@ export function isWorkPath(path: string): boolean {
 
 const SCRIPTS: ReadonlySet<string> = new Set(['task-start', 'task-done'])
 
-/** Whether `command` runs superpowers' `task-start` or `task-done`: as a segment's program, or the script `bash`/`sh` runs. */
+/**
+ * Whether `command` runs superpowers' `task-start` or `task-done`: the script as a word of a segment, behind any
+ * wrapper (`env X=1`, `timeout 600`, `bash -x`, `rtk`), never after a program that only reads (`cat`, `grep`).
+ */
 export function isSuperpowersScript(command: string): boolean {
   return segmentsOf(command).some((w) => {
-    const script = w[0] === 'bash' || w[0] === 'sh' ? w[1] : w[0]
-    return script !== undefined && SCRIPTS.has(basename(script))
+    for (const word of w) {
+      const name = basename(word)
+      if (SCRIPTS.has(name)) return true
+      if (READERS.has(name)) return false
+    }
+    return false
   })
 }

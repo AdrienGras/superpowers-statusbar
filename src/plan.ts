@@ -10,6 +10,8 @@ const FENCE = /^ {0,3}(`{3,}|~{3,})/
 /** A line announcing what a command prints: the fence after it holds output, not commands. */
 const OUTPUT_LINE = /^\s*(?:\*\*)?(expected|attendu|output|sortie)\b/i
 const PROMPT = /^\s*\$\s+/
+/** Fences tagged as shell code hold commands, whatever line announces them. */
+const SHELL_FENCES: ReadonlySet<string> = new Set(['bash', 'sh', 'shell', 'zsh'])
 /** Programs that never run a task's tests: git, reading and searching, and shell syntax met in fenced scripts. */
 const NOT_RUNS: ReadonlySet<string> = new Set([
   ...READERS, 'test', '[',
@@ -34,7 +36,7 @@ export function parsePlan(text: string): PlanTask[] {
   for (const line of text.split(/\r?\n/)) {
     const f = FENCE.exec(line)
     if (fence) {
-      if (f && f[1]![0] === fence.char && f[1]!.length >= fence.len && line.trim() === f[1]) { fence = null; held = ''; continue }
+      if (f && f[1]![0] === fence.char && f[1]!.length >= fence.len && line.trim() === f[1]) { fence = null; held = ''; lastText = ''; continue }
       if (!fence.collect || line.trimStart().startsWith('#')) continue
       const part = line.replace(PROMPT, '').trim()
       if (part.endsWith('\\')) { held += `${part.slice(0, -1).trim()} `; continue }
@@ -43,7 +45,8 @@ export function parsePlan(text: string): PlanTask[] {
       continue
     }
     if (f && !(f[1]![0] === '`' && line.slice(f[0].length).includes('`'))) {
-      fence = { char: f[1]![0]!, len: f[1]!.length, collect: runStep && !OUTPUT_LINE.test(lastText) }
+      const info = line.slice(f[0].length).trim().split(/\s/)[0]?.toLowerCase() ?? ''
+      fence = { char: f[1]![0]!, len: f[1]!.length, collect: runStep && (SHELL_FENCES.has(info) || !OUTPUT_LINE.test(lastText)) }
       continue
     }
     if (line.trim() !== '') lastText = line

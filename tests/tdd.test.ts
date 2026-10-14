@@ -266,3 +266,23 @@ test('flags between a pathless key\'s words stay required', () => {
   expect(matchesPlanRun('npx vitest run', ['npx vitest run --coverage'])).toBe(false)
   expect(matchesPlanRun('uv run pytest', ['uv run --frozen pytest'])).toBe(true)
 })
+
+test('a wrapped task-start or task-done is still the superpowers script', () => {
+  expect(isSuperpowersScript('env X=1 /sp/scripts/task-done plan.md 1 abc -- npm test')).toBe(true)
+  expect(isSuperpowersScript('timeout 600 /sp/scripts/task-done plan.md 1 abc -- npm test')).toBe(true)
+  expect(isSuperpowersScript('bash -x /sp/scripts/task-start plan.md 1')).toBe(true)
+  expect(isSuperpowersScript('rtk /sp/scripts/task-done plan.md 1 abc -- npm test')).toBe(true)
+  expect(isSuperpowersScript('"$S/task-done" plan.md 1 abc -- npm test')).toBe(true)
+  expect(isSuperpowersScript('grep -n task-done notes.md')).toBe(false)
+  expect(isSuperpowersScript('rtk cat /sp/scripts/task-start')).toBe(false)
+})
+
+test('a ./ before a dot stays, so ./... is no wildcard', () => {
+  expect(matchesPlanRun('go test ./...', ['go test ./...'])).toBe(true)
+  expect(matchesPlanRun('go test ./pkg/...', ['go test ./...'])).toBe(false)
+})
+
+test('a command substitution that runs the plan command after a cd is a run', () => {
+  expect(matchesPlanRun('out=$(cd web && npm test)', ['npm test'])).toBe(true)
+  expect(matchesPlanRun('$(npm test)', ['npm test'])).toBe(false)
+})

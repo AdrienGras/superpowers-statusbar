@@ -22,15 +22,15 @@
 
 - "Consider a selectors module": yes, `src/selectors.ts` with `currentTask`, `tddTask`, `findTask` (moved, not rewritten).
 - `wrote` from a Bash redirect stays **ungated** by `isSuperpowersScript` (a superpowers script line that also redirects into a work file did write it); pinned by a test.
-- A pathless key requires only the plan command's flags **after its last positional word** (`node --test`, `pytest -x`), not the prefix's (`uv run --frozen pytest`, `docker compose exec -T php composer test`, `timeout -k 5 90 npm test`). The reviewer's "after the key's first word" would still require `--frozen`.
-- The executed-side stop set adds `read` (for `rtk read`), `sed`, `rg`, `less`, `man`, `which`, `type` to `READERS`; plan parsing (`NOT_RUNS`) is unchanged.
-- `isSuperpowersScript` is true only when a segment's program (or the script `bash`/`sh` runs) has the basename `task-start` or `task-done`.
-- Expected-output fences: a fence whose last non-empty line before it starts with `Expected`, `Attendu`, `Output` or `Sortie` (optionally bold, optionally followed by `:`) collects no runs.
+- A pathless key requires only the plan command's flags **after its last positional word** (`node --test`, `pytest -x`), not the prefix's (`uv run --frozen pytest`, `docker compose exec -T php composer test`, `timeout -k 5 90 npm test`). The reviewer's "after the key's first word" would still require `--frozen`. *(Final review: replaced by "after the key's first word, except a runner's option right after `run`/`exec`": the first rule let `cargo run -p x --bin api` match `cargo test -p x --test api`.)*
+- The executed-side stop set adds `read` (for `rtk read`), `sed`, `rg`, `less`, `man`, `which`, `type` to `READERS`. *(Final review: `NOT_RUNS` spreads `READERS`, so plan lines starting with them are dropped too; kept, since none of them runs tests, and the spec lists them.)*
+- `isSuperpowersScript` is true only when a segment's program (or the script `bash`/`sh` runs) has the basename `task-start` or `task-done`. *(Final review: widened to the script as any word of a segment, behind any wrapper, never after a reading program.)*
+- Expected-output fences: a fence whose last non-empty line before it starts with `Expected`, `Attendu`, `Output` or `Sortie` (optionally bold, optionally followed by `:`) collects no runs. *(Final review: unless the fence is tagged `bash`/`sh`/`shell`/`zsh`; a closed fence resets that line.)*
 
 ## Review Focus
 
 - `export` in the middle of a plan run (`cd x && export CI=1 && pnpm test`): the run keys on `pnpm test`, never on `export`.
-- A subshell run without a redirect (`(npm test)`) and a `$(npm test)` substitution: the first is a run, the second stays a miss (no new false run).
+- A subshell run without a redirect (`(npm test)`) and a `$(npm test)` substitution: the first is a run, the second stays a miss (no new false run). *(Final review: `$(cd web && npm test)` is a run, since the command does run; pinned by a test.)*
 - `./` normalisation must not make a bare `./` or `.` word match anything.
 - The selectors move must keep `trace.ts` and `view.ts` behaviour byte-identical (only imports change).
 - A fenced block under a run step that starts with `$ ` on some lines only: only those lines lose the prompt.

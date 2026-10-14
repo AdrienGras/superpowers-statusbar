@@ -146,3 +146,13 @@ test('parsePlan drops git lines on their own', () => {
 test('parsePlan lists a repeated run once', () => {
   expect(runsOf('Run: `npm test`', '```', 'npm test', '```')).toEqual(['npm test'])
 })
+
+test('parsePlan reads a shell-tagged block even after an expected line', () => {
+  expect(runsOf('Run: `npm test`', 'Attendu : les tests passent. Puis vérifier :', '```bash', 'docker exec app pytest', '```'))
+    .toEqual(['npm test', 'docker exec app pytest'])
+  expect(runsOf('Run: `npm test`', 'Expected:', '```text', 'PASS', '```')).toEqual(['npm test'])
+})
+
+test('parsePlan forgets the expected line once its block is closed', () => {
+  expect(runsOf('Run: `npm test`', 'Expected:', '```', 'PASS', '```', '```', 'npm run lint', '```')).toEqual(['npm test', 'npm run lint'])
+})
