@@ -1,5 +1,5 @@
 import type { ReportedPhase, RunState, Stage, TaskEvent, TaskPhase, TaskState, Waiting } from '../types'
-import { currentTask } from './reduce.ts'
+import { currentTask } from './selectors.ts'
 import { waitText } from './notify.ts'
 
 /**

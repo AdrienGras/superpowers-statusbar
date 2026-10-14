@@ -4,7 +4,7 @@ import type {
 import { ALL_PHASES } from '../instrument.ts'
 import { parsePlan } from '../plan.ts'
 import { parseLedger } from '../ledger.ts'
-import { tddTask } from '../reduce.ts'
+import { tddTask } from '../selectors.ts'
 import { isSuperpowersScript, isWorkPath, matchesPlanRun, redirectTargets } from '../tdd.ts'
 
 /** A string superpowers 7.0.0 must still contain for a detection rule to hold. `file` is relative to the plugin root. */
