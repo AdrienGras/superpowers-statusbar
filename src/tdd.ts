@@ -21,6 +21,9 @@ export const READERS: ReadonlySet<string> = new Set([
   'git', 'cat', 'ls', 'grep', 'find', 'head', 'tail', 'wc', 'echo', 'printf', 'diff', 'jq',
 ])
 
+/** Subcommand verbs too generic to start a key: the word before them (the runner) joins it. */
+const VERBS: ReadonlySet<string> = new Set(['run', 'exec'])
+
 /** Both views of `command`: heredoc bodies and `#` comments blanked, quoted and escaped characters masked. */
 function mask(command: string): Piece {
   const text = command.split('')
@@ -128,9 +131,10 @@ function basename(word: string): string {
 
 /**
  * What identifies a plan run: the last two positional words of its first segment that is not a `cd`, up to its
- * first argument path and the paths right after it, or up to its first redirection. Leading words are dropped, so a
- * prefix (`rtk`, `docker compose exec php`) never makes the key alone. A key without a path carries the plan
- * command's flags, all required.
+ * first argument path or its first redirection, then the paths right after that one. Leading words are dropped, so
+ * a prefix (`rtk`, `docker compose exec php`) never makes the key alone; a key starting on `run` or `exec` keeps the
+ * runner before it. A key without a path carries the plan command's flags, all required. A line with a program that
+ * only reads (`rtk git status`) has no key.
  */
 interface Key { words: string[]; flags: string[] }
 
@@ -139,42 +143,55 @@ function keyOf(run: string): Key | undefined {
   if (!segment) return undefined
   const collected: string[] = []
   const flags: string[] = []
-  let path = false
+  let pathAt = -1
   for (const raw of segment) {
     if (/[<>]/.test(raw)) break
     if (raw.startsWith('-')) {
-      if (!path) flags.push(raw)
+      if (pathAt < 0) flags.push(raw)
       continue
     }
     const word = dropSelector(raw)
-    if (path && !pathLike(word)) break
+    if (READERS.has(basename(word))) return undefined
+    if (pathAt >= 0 && !pathLike(word)) break
     collected.push(word)
-    if (collected.length > 1 && pathLike(word)) path = true
+    if (pathAt < 0 && collected.length > 1 && pathLike(word)) pathAt = collected.length - 1
   }
-  return { words: collected.slice(-KEY_WORDS), flags: path ? [] : flags }
+  const end = pathAt < 0 ? collected.length : pathAt + 1
+  let from = Math.max(0, end - KEY_WORDS)
+  if (from > 0 && VERBS.has(collected[from] ?? '')) from--
+  return { words: collected.slice(from), flags: pathAt < 0 ? flags : [] }
 }
 
 const keysOf = (runs: readonly string[]): Key[] => runs.map(keyOf).filter((k): k is Key => k !== undefined)
 
-/** Whether the key's words after its first follow, in order, from `at` in `segment`, with the key's flags. */
+/**
+ * Whether the key's words after its first follow, in order, from `at` in `segment`, with the key's flags. Between
+ * two key words, only flags and the word right after a flag may sit (`npm --prefix /x test`).
+ */
 function restInOrder(segment: string[], at: number, key: Key): boolean {
   if (!key.flags.every((f) => segment.includes(f))) return false
   for (const want of key.words.slice(1)) {
     let found = false
     while (at < segment.length && !found) {
-      const have = dropSelector(segment[at++] ?? '')
+      const have = dropSelector(segment[at] ?? '')
       found = have === want || (pathLike(want) && have.endsWith('/' + want))
+      if (!found && !have.startsWith('-') && !segment[at - 1]?.startsWith('-')) return false
+      at++
     }
     if (!found) return false
   }
   return true
 }
 
-/** The key may start at any word of the segment (a prefix wraps the run), but never after a program that only reads. */
+/**
+ * A key of two words or more may start at any word of the segment (a prefix wraps the run), but never after a
+ * program that only reads; a one-word key is the segment's program.
+ */
 function segmentMatches(segment: string[], key: Key): boolean {
   const first = key.words[0]
   if (first === undefined) return false
-  for (let start = 0; start < segment.length; start++) {
+  const starts = key.words.length > 1 ? segment.length : 1
+  for (let start = 0; start < starts; start++) {
     const word = basename(dropSelector(segment[start] ?? ''))
     if (word === basename(first) && restInOrder(segment, start + 1, key)) return true
     if (READERS.has(word)) return false
