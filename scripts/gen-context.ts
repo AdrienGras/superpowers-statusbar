@@ -6,8 +6,8 @@ import { startupHookOutput } from '../src/instrument.ts'
 
 const dir = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks', 'context')
 const files = [
-  ['session-start.json', startupHookOutput('SessionStart')],
-  ['subagent-start.json', startupHookOutput('SubagentStart')],
+  ['session-start.json', `${startupHookOutput('SessionStart')}\n`],
+  ['subagent-start.json', `${startupHookOutput('SubagentStart')}\n`],
 ] as const
 
 const check = process.argv.includes('--check')

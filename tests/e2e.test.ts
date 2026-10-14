@@ -76,7 +76,10 @@ test('red and green observed only give a warning naming the task', () => {
     const trace = unreported(traceOf(untilFinishingMenu(run)))
     const { errors, warnings } = checkTrace(trace, mode, 2)
     expect(errors).toEqual([])
-    expect(warnings).toContain('task 1: red/green not reported by the model')
+    expect(warnings).toEqual(expect.arrayContaining([
+      'task 1: red/green not reported by the model',
+      'task 2: red/green not reported by the model',
+    ]))
   }
 })
 
@@ -139,4 +142,12 @@ test('an SDD trace without a spawn-seen dispatch warns', () => {
   one[i] = { ...one[i]!, via: 'spawn' }
   expect(checkTrace(one, 'sdd', 2).warnings).toEqual([])
   expect(checkTrace(via('tool'), 'direct', 2).warnings).not.toContain(warning)
+})
+
+test('a report of only green names the missing red', () => {
+  const trace = traceOf(untilFinishingMenu(DIRECT_RUN)).filter(e => !(e.action === 'phase-reported' && e.reported === 'red'))
+  expect(checkTrace(trace, 'direct', 2).warnings).toEqual([
+    'task 1: red/green not reported by the model (missing red)',
+    'task 2: red/green not reported by the model (missing red)',
+  ])
 })
