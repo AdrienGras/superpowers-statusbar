@@ -7,6 +7,9 @@ const STEP_TITLE = /^- \[[ xX]\] \*\*Step [0-9]+:?\s*(.*?)\*{0,2}\s*$/
 const RUN_STEP = /\b(run|verify|confirm|lancer|lance|exécuter|vérifier)\b/i
 const RUN_LINE = /^\s*(?:\*\*)?(Run|Lancer|Commande|Exécuter)(?:\*\*)?\s*:\s*(?:\*\*)?\s*`([^`]+)`/i
 const FENCE = /^ {0,3}(`{3,}|~{3,})/
+/** A line announcing what a command prints: the fence after it holds output, not commands. */
+const OUTPUT_LINE = /^\s*(?:\*\*)?(expected|attendu|output|sortie)\b/i
+const PROMPT = /^\s*\$\s+/
 /** Programs that never run a task's tests: git, reading and searching, and shell syntax met in fenced scripts. */
 const NOT_RUNS: ReadonlySet<string> = new Set([
   ...READERS, 'test', '[',
@@ -25,17 +28,25 @@ export function parsePlan(text: string): PlanTask[] {
   const tasks: PlanTask[] = []
   let fence: { char: string; len: number; collect: boolean } | null = null
   let runStep = false
+  let lastText = ''
+  /** The start of a fenced run continued with `\`, until a line that does not end with one. */
+  let held = ''
   for (const line of text.split(/\r?\n/)) {
     const f = FENCE.exec(line)
     if (fence) {
-      if (f && f[1]![0] === fence.char && f[1]!.length >= fence.len && line.trim() === f[1]) { fence = null; continue }
-      if (fence.collect && !line.trimStart().startsWith('#')) addRun(tasks[tasks.length - 1], line)
+      if (f && f[1]![0] === fence.char && f[1]!.length >= fence.len && line.trim() === f[1]) { fence = null; held = ''; continue }
+      if (!fence.collect || line.trimStart().startsWith('#')) continue
+      const part = line.replace(PROMPT, '').trim()
+      if (part.endsWith('\\')) { held += `${part.slice(0, -1).trim()} `; continue }
+      addRun(tasks[tasks.length - 1], held + part)
+      held = ''
       continue
     }
     if (f && !(f[1]![0] === '`' && line.slice(f[0].length).includes('`'))) {
-      fence = { char: f[1]![0]!, len: f[1]!.length, collect: runStep }
+      fence = { char: f[1]![0]!, len: f[1]!.length, collect: runStep && !OUTPUT_LINE.test(lastText) }
       continue
     }
+    if (line.trim() !== '') lastText = line
     const h = HEADING.exec(line)
     if (h) {
       tasks.push({ n: h[1]!, title: h[2]!.trim(), steps: 0 })

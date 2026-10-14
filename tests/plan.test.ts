@@ -116,3 +116,33 @@ test('parsePlan drops read-only commands, shell keywords and cd-only lines from 
   ].join('\n')
   expect(parsePlan(text)[0]!.runs).toEqual(['bats "$f"', 'cd backend && pytest tests/ -x', 'CI=1 npm test'])
 })
+
+// --- #19 ---
+
+const runsOf = (...body: string[]) =>
+  parsePlan(['### Task 1: X', '- [ ] **Step 1: Run the tests**', ...body].join('\n'))[0]!.runs
+
+test('parsePlan joins a run continued with a backslash', () => {
+  expect(runsOf('```bash', 'pnpm vitest run \\', '  src/a.test.ts', '```')).toEqual(['pnpm vitest run src/a.test.ts'])
+})
+
+test('parsePlan drops a $ prompt', () => {
+  expect(runsOf('```', '$ npm test', 'npm run lint', '```')).toEqual(['npm test', 'npm run lint'])
+})
+
+test('parsePlan takes no runs from an expected-output block', () => {
+  expect(runsOf('Run: `npm test`', 'Expected:', '```', 'PASS src/a.test.ts', '```')).toEqual(['npm test'])
+  expect(runsOf('Run: `npm test`', '**Expected output:**', '```', 'ok 1 - slugify', '```')).toEqual(['npm test'])
+})
+
+test('parsePlan keeps an export-prefixed run', () => {
+  expect(runsOf('Run: `export CI=1 && pnpm test`')).toEqual(['export CI=1 && pnpm test'])
+})
+
+test('parsePlan drops git lines on their own', () => {
+  expect(runsOf('```bash', 'git add -A', 'git commit -m "x"', '```')).toBeUndefined()
+})
+
+test('parsePlan lists a repeated run once', () => {
+  expect(runsOf('Run: `npm test`', '```', 'npm test', '```')).toEqual(['npm test'])
+})
