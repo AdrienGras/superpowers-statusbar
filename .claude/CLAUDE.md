@@ -83,7 +83,7 @@ claude --plugin-dir /srv/AdrienGras/superpowers-statusbar   # essai live avec re
 
 ## Versions, releases et branches
 
-- **Toute PR qui change ce que reçoivent les utilisateurs** (`src/`, `hooks/`, manifest) passe la version dans la même PR, avec la même valeur dans `package.json` et `.claude-plugin/plugin.json` : correctif → patch (`0.1.x`), fonctionnalité → mineure. Une installation se fait par numéro de version : sans changement de numéro, les gens qui ont installé le mod depuis la marketplace risquent de ne pas recevoir la mise à jour. Une PR qui ne touche que docs, tests ou scripts de dev ne change pas la version.
+- **Toute PR qui change ce que reçoivent les utilisateurs** (`src/`, `hooks/`, manifest) passe la version dans la même PR, avec la même valeur dans `package.json`, `package-lock.json` et `.claude-plugin/plugin.json` : correctif → patch (`0.1.x`), fonctionnalité → mineure. Une installation se fait par numéro de version : sans changement de numéro, les gens qui ont installé le mod depuis la marketplace risquent de ne pas recevoir la mise à jour. Une PR qui ne touche que docs, tests ou scripts de dev ne change pas la version.
 - **Après le merge** :
   - tag annoté `vX.Y.Z` sur le commit de merge, poussé ;
   - release GitHub depuis ce tag (`gh release create`), en anglais : résumé, tickets fermés, lien vers la PR ;
