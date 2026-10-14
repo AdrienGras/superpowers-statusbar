@@ -1,7 +1,7 @@
 import { test, expect } from 'claude-code/testing'
 
 import type { Action, ReportedPhase, RunState } from '../types'
-import { ALL_PHASES, REPORT_TOOL } from '../src/instrument.ts'
+import { ALL_PHASES, REPORT_TOOL, STARTUP_CONTEXT, startupHookOutput } from '../src/instrument.ts'
 import { traceEntry } from '../src/trace.ts'
 import { replay } from '../src/detectors/index.ts'
 import { reduce } from '../src/reduce.ts'
@@ -47,8 +47,8 @@ test('REPORT_TOOL description names the three skills and words every phase', () 
 - \`drafting\`: you are writing the plan
 - \`self-review\`: you are running the self-review checklist`)
   expect(d).toContain(`test-driven-development:
-- \`red\`: you are writing a failing test and watching it fail
-- \`green\`: you are writing the minimal code to make it pass
+- \`red\`: you start writing a failing test
+- \`green\`: you start writing the code that makes it pass
 - \`refactor\`: you are cleaning up with the tests green`)
   expect(d.length).toBeLessThan(1500)
 })
@@ -87,4 +87,16 @@ test('traceEntry lists the task events the action added, across tasks', () => {
   // Nothing added, or no previous state given: no `phases`.
   expect(traceEntry({ type: 'turn-ended', at: 12 }, after, after).phases).toBeUndefined()
   expect(traceEntry(verified, after).phases).toBeUndefined()
+})
+
+test('STARTUP_CONTEXT is the text measured in the spike', () => {
+  expect(STARTUP_CONTEXT).toContain('including when you execute a plan yourself with superpowers:executing-plans and when you implement a task as a subagent')
+  expect(STARTUP_CONTEXT).toContain('mcp__superpowers-statusbar__report_phase')
+})
+test('startupHookOutput is the hook JSON for each event', () => {
+  expect(JSON.parse(startupHookOutput('SubagentStart'))).toEqual({ hookSpecificOutput: { hookEventName: 'SubagentStart', additionalContext: STARTUP_CONTEXT } })
+})
+test('report_phase defines red and green as the startup text does', () => {
+  expect(REPORT_TOOL.description).toContain('- `red`: you start writing a failing test')
+  expect(REPORT_TOOL.description).toContain('- `green`: you start writing the code that makes it pass')
 })

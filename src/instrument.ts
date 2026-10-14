@@ -17,8 +17,8 @@ const WHEN: Record<ReportedPhase, string> = {
   'awaiting-approval': 'the document is handed over for approval',
   'drafting': 'you are writing the plan',
   'self-review': 'you are running the self-review checklist',
-  'red': 'you are writing a failing test and watching it fail',
-  'green': 'you are writing the minimal code to make it pass',
+  'red': 'you start writing a failing test',
+  'green': 'you start writing the code that makes it pass',
   'refactor': 'you are cleaning up with the tests green',
 }
 
@@ -51,3 +51,18 @@ export const REPORT_TOOL: { name: 'report_phase'; description: string; inputSche
   },
   isDeferred: false,
 }
+
+/**
+ * The same instruction, put in context at session and subagent start by the `SessionStart` and `SubagentStart`
+ * command hooks of `hooks/hooks.json`: Sonnet follows it far better there than from the tool description alone.
+ */
+export const STARTUP_CONTEXT =
+  'Status bar reporting (superpowers-statusbar plugin): whenever you follow superpowers test-driven-development, '
+  + 'including when you execute a plan yourself with superpowers:executing-plans and when you implement a task as a '
+  + 'subagent, call the mcp__superpowers-statusbar__report_phase tool each time you move into a TDD phase: red when '
+  + 'you start writing a failing test, green when you start writing the code that makes it pass, refactor when you '
+  + 'clean up with the tests green. It is a signal only; it changes nothing about how you work.'
+
+/** What a `SessionStart` or `SubagentStart` command hook prints on stdout. */
+export const startupHookOutput = (event: 'SessionStart' | 'SubagentStart'): string =>
+  JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: STARTUP_CONTEXT } })

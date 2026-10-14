@@ -1,1 +1,7 @@
-{ "modules": ["./register.tsx"] }
+{
+  "modules": ["./register.tsx"],
+  "hooks": {
+    "SessionStart": [{ "matcher": "startup|resume|clear|compact", "hooks": [{ "type": "command", "command": "cat \"${CLAUDE_PLUGIN_ROOT}/hooks/context/session-start.json\"" }] }],
+    "SubagentStart": [{ "hooks": [{ "type": "command", "command": "cat \"${CLAUDE_PLUGIN_ROOT}/hooks/context/subagent-start.json\"" }] }]
+  }
+}
