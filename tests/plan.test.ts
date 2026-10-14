@@ -91,3 +91,28 @@ test('parsePlan gives no runs to a task without run steps, and ignores code unde
   const text = ['### Task 1: Doc', '- [ ] **Step 1: Write the README**', '```bash', 'npm test', '```'].join('\n')
   expect(parsePlan(text)).toEqual([{ n: '1', title: 'Doc', steps: 1 }])
 })
+
+test('parsePlan drops read-only commands, shell keywords and cd-only lines from runs', () => {
+  const text = [
+    '### Task 1: Recettes',
+    '- [ ] **Step 2: Run the test to verify it fails**',
+    'Run: `grep -n slugify src/text.sh`',
+    'Run: `cat package.json`',
+    '```bash',
+    'set -euo pipefail',
+    'cd backend',
+    'for f in test/*.bats; do',
+    '  bats "$f"',
+    'done',
+    'if [ -f x ]; then',
+    'fi',
+    'export CI=1',
+    'source .venv/bin/activate',
+    'ls tests/ && find . -name "*.py" | head',
+    'echo ok; printf "x"; wc -l src/a.py; tail -5 log; head -3 log; diff a b; test -f x; [ -d y ]; jq . a.json',
+    'cd backend && pytest tests/ -x',
+    'CI=1 npm test',
+    '```',
+  ].join('\n')
+  expect(parsePlan(text)[0]!.runs).toEqual(['bats "$f"', 'cd backend && pytest tests/ -x', 'CI=1 npm test'])
+})

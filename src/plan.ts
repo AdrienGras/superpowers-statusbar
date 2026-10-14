@@ -1,4 +1,5 @@
 import type { PlanTask } from '../types'
+import { programOf } from './tdd.ts'
 
 const HEADING = /^#{1,6}[ \t]+Task[ \t]+([0-9]+[a-z]?)[ \t]*:?[ \t]*(.*)$/
 const STEP = /^- \[[ xX]\] \*\*Step [0-9]+/
@@ -6,10 +7,16 @@ const STEP_TITLE = /^- \[[ xX]\] \*\*Step [0-9]+:?\s*(.*?)\*{0,2}\s*$/
 const RUN_STEP = /\b(run|verify|confirm|lancer|lance|exécuter|vérifier)\b/i
 const RUN_LINE = /^\s*(?:\*\*)?(Run|Lancer|Commande|Exécuter)(?:\*\*)?\s*:\s*(?:\*\*)?\s*`([^`]+)`/i
 const FENCE = /^ {0,3}(`{3,}|~{3,})/
+/** Programs that never run a task's tests: git, reading and searching, and shell syntax met in fenced scripts. */
+const NOT_RUNS: ReadonlySet<string> = new Set([
+  'git', 'cat', 'ls', 'grep', 'find', 'head', 'tail', 'wc', 'echo', 'printf', 'diff', 'test', '[', 'jq',
+  'set', 'export', 'source', '.', 'for', 'while', 'until', 'if', 'then', 'else', 'elif', 'fi', 'do', 'done', 'case', 'esac',
+])
 
 function addRun(task: PlanTask | undefined, command: string): void {
   const cmd = command.trim()
-  if (!task || !cmd || cmd.split(/\s+/)[0] === 'git') return
+  const program = programOf(cmd)
+  if (!task || !program || NOT_RUNS.has(program)) return
   if (!task.runs) task.runs = []
   if (!task.runs.includes(cmd)) task.runs.push(cmd)
 }
