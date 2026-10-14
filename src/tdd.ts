@@ -19,6 +19,7 @@ const KEY_WORDS = 2
 /** Programs that only read or print: a plan run never starts after one of them in a segment. */
 export const READERS: ReadonlySet<string> = new Set([
   'git', 'cat', 'ls', 'grep', 'find', 'head', 'tail', 'wc', 'echo', 'printf', 'diff', 'jq',
+  'read', 'sed', 'rg', 'less', 'man', 'which', 'type',
 ])
 
 /** Subcommand verbs too generic to start a key: the word before them (the runner) joins it. */
@@ -98,7 +99,7 @@ const pipelinesOf = (command: string): Piece[][] => cut(mask(command), PIPELINE_
 function words(segment: Piece): string[] {
   const all: string[] = []
   for (const m of segment.masked.matchAll(/\S+/g)) {
-    const word = segment.text.slice(m.index, m.index + m[0].length).trim().replace(/^['"]+|['"]+$/g, '')
+    const word = segment.text.slice(m.index, m.index + m[0].length).replace(/^[('"]+|[)'"]+$/g, '')
     if (word !== '') all.push(word)
   }
   let i = 0
@@ -106,9 +107,12 @@ function words(segment: Piece): string[] {
   return all.slice(i)
 }
 
-/** The words of each segment of `command` that runs something, `cd` segments left out. */
+/** A segment that only sets the shell up: a `cd`, or an `export` of `VAR=x` assignments. */
+const isSetup = (w: string[]) => w[0] === 'cd' || (w[0] === 'export' && w.slice(1).every((x) => ASSIGNMENT.test(x)))
+
+/** The words of each segment of `command` that runs something, `cd` and `export VAR=x` segments left out. */
 function segmentsOf(command: string): string[][] {
-  return pipelinesOf(command).flat().map(words).filter((w) => w.length > 0 && w[0] !== 'cd')
+  return pipelinesOf(command).flat().map(words).filter((w) => w.length > 0 && !isSetup(w))
 }
 
 /** The program a command runs: the first word of its first segment that is not a `cd`. */
@@ -129,12 +133,15 @@ function basename(word: string): string {
   return word.slice(word.lastIndexOf('/') + 1)
 }
 
+/** A word as a key compares it: without its `::` selector nor a leading `./`. */
+const norm = (word: string) => dropSelector(word).replace(/^\.\//, '')
+
 /**
  * What identifies a plan run: the last two positional words of its first segment that is not a `cd`, up to its
  * first argument path or its first redirection, then the paths right after that one. Leading words are dropped, so
  * a prefix (`rtk`, `docker compose exec php`) never makes the key alone; a key starting on `run` or `exec` keeps the
- * runner before it. A key without a path carries the plan command's flags, all required. A line with a program that
- * only reads (`rtk git status`) has no key.
+ * runner before it. A key without a path carries the plan command's own flags (those after its last word), all
+ * required. A line with a program that only reads (`rtk git status`) has no key.
  */
 interface Key { words: string[]; flags: string[] }
 
@@ -142,24 +149,27 @@ function keyOf(run: string): Key | undefined {
   const segment = segmentsOf(run)[0]
   if (!segment) return undefined
   const collected: string[] = []
-  const flags: string[] = []
+  const flags: { flag: string; after: number }[] = []
   let pathAt = -1
   for (const raw of segment) {
     if (/[<>]/.test(raw)) break
     if (raw.startsWith('-')) {
-      if (pathAt < 0) flags.push(raw)
+      if (pathAt < 0) flags.push({ flag: raw, after: collected.length })
       continue
     }
-    const word = dropSelector(raw)
+    const word = norm(raw)
+    if (word === '') continue
     if (READERS.has(basename(word))) return undefined
     if (pathAt >= 0 && !pathLike(word)) break
     collected.push(word)
     if (pathAt < 0 && collected.length > 1 && pathLike(word)) pathAt = collected.length - 1
   }
+  if (collected.length === 0) return undefined
   const end = pathAt < 0 ? collected.length : pathAt + 1
   let from = Math.max(0, end - KEY_WORDS)
   if (from > 0 && VERBS.has(collected[from] ?? '')) from--
-  return { words: collected.slice(from), flags: pathAt < 0 ? flags : [] }
+  const own = pathAt < 0 ? flags.filter((f) => f.after === collected.length).map((f) => f.flag) : []
+  return { words: collected.slice(from), flags: own }
 }
 
 const keysOf = (runs: readonly string[]): Key[] => runs.map(keyOf).filter((k): k is Key => k !== undefined)
@@ -173,8 +183,8 @@ function restInOrder(segment: string[], at: number, key: Key): boolean {
   for (const want of key.words.slice(1)) {
     let found = false
     while (at < segment.length && !found) {
-      const have = dropSelector(segment[at] ?? '')
-      found = have === want || (pathLike(want) && have.endsWith('/' + want))
+      const have = norm(segment[at] ?? '')
+      found = have !== '' && have === want || (pathLike(want) && have.endsWith('/' + want))
       if (!found && !have.startsWith('-') && !segment[at - 1]?.startsWith('-')) return false
       at++
     }
@@ -257,6 +267,12 @@ export function isWorkPath(path: string): boolean {
   return !/(^|\/)(\.superpowers|\.claude)\//.test(path) && !/(^|\/)docs\/superpowers\//.test(path)
 }
 
+const SCRIPTS: ReadonlySet<string> = new Set(['task-start', 'task-done'])
+
+/** Whether `command` runs superpowers' `task-start` or `task-done`: as a segment's program, or the script `bash`/`sh` runs. */
 export function isSuperpowersScript(command: string): boolean {
-  return /\btask-(start|done)\b/.test(command)
+  return segmentsOf(command).some((w) => {
+    const script = w[0] === 'bash' || w[0] === 'sh' ? w[1] : w[0]
+    return script !== undefined && SCRIPTS.has(basename(script))
+  })
 }

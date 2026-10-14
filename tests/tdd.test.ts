@@ -1,6 +1,6 @@
 import { test, expect } from 'claude-code/testing'
 
-import { isSuperpowersScript, isWorkPath, matchesPlanRun, redirectTargets } from '../src/tdd.ts'
+import { isSuperpowersScript, isWorkPath, matchesPlanRun, programOf, redirectTargets } from '../src/tdd.ts'
 
 test('matchesPlanRun accepts the forms seen in real runs', () => {
   expect(matchesPlanRun('cd /r; npm test 2>&1 | tail -10', ['npm test'])).toBe(true)
@@ -209,4 +209,51 @@ test('a run key never starts on a bare run or exec, and skips only flags between
   expect(matchesPlanRun('npx vitest run src/a.test.ts', ['pnpm vitest run src/a.test.ts'])).toBe(true)
   expect(matchesPlanRun('pnpm exec vitest run --reporter=dot src/a.test.ts', ['pnpm vitest run src/a.test.ts'])).toBe(true)
   expect(matchesPlanRun('pnpm vitest run -t slug src/a.test.ts', ['pnpm vitest run src/a.test.ts'])).toBe(true)
+})
+
+// --- #19 ---
+
+test('export VAR=x segments are skipped like cd', () => {
+  expect(matchesPlanRun('pnpm test', ['export CI=1 && pnpm test'])).toBe(true)
+  expect(matchesPlanRun('pnpm test', ['cd web && export CI=1 NODE_ENV=test && pnpm test'])).toBe(true)
+  expect(programOf('export CI=1 && pnpm test')).toBe('pnpm')
+  expect(matchesPlanRun('export CI=1', ['export CI=1 && pnpm test'])).toBe(false)
+  expect(matchesPlanRun('npm --version', ['--version'])).toBe(false)
+})
+
+test('a subshell run is a run, and its redirect only logs it', () => {
+  expect(matchesPlanRun('(cd backend && pytest -x) > out.txt', ['cd backend && pytest -x'])).toBe(true)
+  expect(redirectTargets('(cd backend && pytest -x) > out.txt', ['cd backend && pytest -x'])).toEqual([])
+  expect(matchesPlanRun('$(npm test)', ['npm test'])).toBe(false)
+})
+
+test('isSuperpowersScript wants the script as the command', () => {
+  expect(isSuperpowersScript('bash /sp/scripts/task-start plan.md 1')).toBe(true)
+  expect(isSuperpowersScript('cat my-task-done')).toBe(false)
+  expect(isSuperpowersScript('vim notes/task-done.md')).toBe(false)
+})
+
+test('a leading ./ is the same path on both sides', () => {
+  expect(matchesPlanRun('pnpm vitest run src/a.test.ts', ['pnpm vitest run ./src/a.test.ts'])).toBe(true)
+  expect(matchesPlanRun('pnpm vitest run ./src/a.test.ts', ['pnpm vitest run src/a.test.ts'])).toBe(true)
+  expect(matchesPlanRun('pnpm vitest run ./', ['pnpm vitest run src/a.test.ts'])).toBe(false)
+})
+
+test('a pathless key needs only the plan command\'s own flags', () => {
+  expect(matchesPlanRun('uv run pytest', ['uv run --frozen pytest'])).toBe(true)
+  expect(matchesPlanRun('composer test', ['docker compose exec -T php composer test'])).toBe(true)
+  expect(matchesPlanRun('npm test', ['timeout -k 5 90 npm test'])).toBe(true)
+  expect(matchesPlanRun('rtk proxy node scripts/x.js', ['rtk proxy node --test'])).toBe(false)
+})
+
+test('a key never starts after a program that reads, rtk read included', () => {
+  expect(matchesPlanRun('rtk read cargo test', ['cargo test'])).toBe(false)
+  expect(matchesPlanRun('rg npm test', ['npm test'])).toBe(false)
+  expect(matchesPlanRun('which npm test', ['npm test'])).toBe(false)
+  expect(matchesPlanRun('sed -n 1p npm test', ['npm test'])).toBe(false)
+})
+
+test('quoted text and heredoc bodies are never cut into runs', () => {
+  expect(redirectTargets('git commit -m "x; npm test > out.txt"', ['npm test'])).toEqual([])
+  expect(matchesPlanRun('git commit -F - <<EOF\nnpm test\nEOF', ['npm test'])).toBe(false)
 })
