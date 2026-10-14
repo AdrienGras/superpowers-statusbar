@@ -1,6 +1,6 @@
 {
   "name": "superpowers-statusbar",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "author": { "name": "Adrien Gras" },
   "description": "Live progress of a superpowers run: a band above the prompt, a side pane and notifications.",
   "types": "./types/index.d.ts",
