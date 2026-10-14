@@ -149,8 +149,9 @@ function toolUsed(e: ToolEvent, s: RunState | null): Detection {
   switch (e.tool) {
     case REPORT_TOOL: {
       const phase = str(e.input.phase)
-      if (!phase || !REPORTED_PHASES.has(phase)) return d
-      d.actions.push({ type: 'phase-reported', phase: phase as ReportedPhase, ...(e.agentId ? { agentId: e.agentId } : {}), at: e.at })
+      if (phase && REPORTED_PHASES.has(phase)) {
+        d.actions.push({ type: 'phase-reported', phase: phase as ReportedPhase, ...(e.agentId ? { agentId: e.agentId } : {}), at: e.at })
+      }
       break
     }
     case 'Write': fileWritten(e, s, d); break
