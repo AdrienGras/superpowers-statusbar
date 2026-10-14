@@ -1,7 +1,8 @@
 import { test, expect } from 'claude-code/testing'
 
 import type { Action, RunState } from '../types'
-import { reduce, newRun, currentTask, tddTask } from '../src/reduce.ts'
+import { reduce, newRun } from '../src/reduce.ts'
+import { currentTask, tddTask } from '../src/selectors.ts'
 import { parseReport } from '../src/reports.ts'
 
 const run = (s: RunState | null, actions: Action[]): RunState | null =>
@@ -660,4 +661,27 @@ test('tddTask routes implementers, the inline main loop, and nothing else', () =
 test('work-observed for an unknown task changes nothing', () => {
   const s = must(inline([]))
   expect(reduce(s, work('9', true, true, 31))).toBe(s)
+})
+
+// --- #19 ---
+
+test('a reported phase never goes back behind refactor', () => {
+  expect(phasesOf(inline([reported('refactor', 31), reported('green', 32)]))).toEqual(['brief', 'refactor'])
+  expect(phasesOf(inline([reported('refactor', 31), reported('red', 32)]))).toEqual(['brief', 'refactor'])
+  expect(phasesOf(inline([reported('green', 31), reported('red', 32)]))).toEqual(['brief', 'green'])
+})
+
+test('a stale pending write is dropped when the segment changes', () => {
+  const s = inline([work('1', true, false, 31), { type: 'task-started', task: '1', at: 32 }])
+  expect(task(s, '1').pendingWriteSegment).toBeUndefined()
+})
+
+test('a plain resume without an open review keeps the segment', () => {
+  const s = run(execRun('sdd'), [
+    { type: 'agent-dispatched', agentId: 'a1', role: 'implementer', task: '1', isRunning: true, at: 30 },
+    work('1', true, false, 31, 'a1'),
+    { type: 'agent-resumed', agentId: 'a1', at: 32 },
+    work('1', false, true, 33, 'a1'),
+  ])
+  expect(phasesOf(s).filter(p => p === 'red' || p === 'green' || p === 'fix')).toEqual(['red', 'green'])
 })

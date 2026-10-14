@@ -524,3 +524,15 @@ test('nothing before exec, and no run for a task without runs', () => {
   expect(work(bash(RUN, 'ok'), noRuns)).toEqual([])
   expect(work(tool('Edit', { file_path: '/r/src/text.sh' }), noRuns)).toEqual(observed(true, false))
 })
+
+// --- #19 ---
+
+test('a background Bash run of a plan command counts as ran', () => {
+  const e = tool('Bash', { command: 'bats test/text.bats', run_in_background: true }, { text: 'Command running in background with ID: b1' })
+  expect(work(e, direct())).toEqual(observed(false, true))
+})
+
+test('a superpowers script line that redirects into a work file still wrote it', () => {
+  const e = tool('Bash', { command: '/sp/scripts/task-done plan.md 1 abc -- bats test/text.bats && echo x > src/text.sh' })
+  expect(work(e, direct())).toEqual(observed(true, false))
+})

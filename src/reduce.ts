@@ -3,13 +3,18 @@ import type {
 } from '../types'
 import { decisionsOf } from './ledger.ts'
 import { isUncleanVerdict, parseReport } from './reports.ts'
+import { currentTask, findTask } from './selectors.ts'
 
 type ActionOf<T extends Action['type']> = Extract<Action, { type: T }>
 
 const STAGES: readonly Stage[] = ['brainstorm', 'plan', 'exec', 'final-review', 'finishing', 'done']
 const rank = (stage: Stage) => STAGES.indexOf(stage)
 
-const TASK_PHASES: ReadonlySet<ReportedPhase> = new Set<ReportedPhase>(['red', 'green', 'refactor'])
+/** The TDD phases of a task, in their order: a segment never goes back to an earlier one. */
+const TDD_PHASES = ['red', 'green', 'refactor'] as const
+type TddPhase = typeof TDD_PHASES[number]
+const TASK_PHASES: ReadonlySet<ReportedPhase> = new Set<ReportedPhase>(TDD_PHASES)
+const tddRank = (phase: TaskPhase) => (TDD_PHASES as readonly TaskPhase[]).indexOf(phase)
 /** Roles whose skills and TDD phases belong to their own work, not to the run's progress. */
 const WORKER_ROLES: ReadonlySet<AgentRoleName> = new Set<AgentRoleName>(['implementer', 'reviewer', 're-reviewer', 'final-reviewer', 'builder-check'])
 
@@ -18,34 +23,6 @@ export function newRun(stage: Stage, at: number, mode?: Mode): RunState {
     id: `run-${at}`, startedAt: at, stage, stageStartedAt: { [stage]: at }, ...(mode ? { mode } : {}),
     tasks: [], milestones: [], agents: {}, decisions: [],
   }
-}
-
-/** The active task activated most recently; ties go to the latest trail activity, then to plan order. */
-export function currentTask(s: RunState): TaskState | undefined {
-  let best: TaskState | undefined
-  for (const t of s.tasks) {
-    if (t.status !== 'active') continue
-    if (!best || compareRecency(t, best) >= 0) best = t
-  }
-  return best
-}
-
-function compareRecency(a: TaskState, b: TaskState): number {
-  return (a.activeAt ?? a.startedAt ?? 0) - (b.activeAt ?? b.startedAt ?? 0) || lastActivity(a) - lastActivity(b)
-}
-
-const lastActivity = (t: TaskState) => t.trail[t.trail.length - 1]?.at ?? 0
-
-/**
- * The task whose TDD work an agent does: with `agentId`, the task of an implementer; without, the current task of an
- * inline run in exec. Reviewers and every other agent do no TDD work of their own.
- */
-export function tddTask(s: RunState, agentId?: string): TaskState | undefined {
-  if (agentId !== undefined) {
-    const rec = s.agents[agentId]
-    return rec?.role === 'implementer' && rec.task ? findTask(s, rec.task) : undefined
-  }
-  return s.mode === 'direct' && s.stage === 'exec' ? currentTask(s) : undefined
 }
 
 // --- run helpers ---
@@ -73,7 +50,6 @@ const setAgent = (s: RunState, id: string, rec: AgentRecord): RunState => ({ ...
 
 // --- task helpers ---
 
-const findTask = (s: RunState, n: string) => s.tasks.find(t => t.n === n)
 
 function ensureTask(s: RunState, n: string): RunState {
   if (findTask(s, n)) return s
@@ -89,7 +65,12 @@ function mapTask(s: RunState, n: string, f: (t: TaskState) => TaskState): RunSta
 /** Applies `f` to task `n`, adding it with an unknown title when the plan lacks it. */
 const upsertTask = (s: RunState, n: string, f: (t: TaskState) => TaskState) => mapTask(ensureTask(s, n), n, f)
 
-const push = (t: TaskState, e: TaskEvent): TaskState => ({ ...t, trail: [...t.trail, e] })
+/** Appends `e`; an event that starts a segment drops the pending write of the previous one. */
+function push(t: TaskState, e: TaskEvent): TaskState {
+  if (!startsSegment(e)) return { ...t, trail: [...t.trail, e] }
+  const { pendingWriteSegment: _stale, ...rest } = t
+  return { ...rest, trail: [...t.trail, e] }
+}
 
 const activate = (t: TaskState, at: number): TaskState => ({ ...t, status: 'active', startedAt: t.startedAt ?? at, activeAt: at })
 
@@ -101,15 +82,16 @@ function fix(t: TaskState, at: number): TaskState {
 }
 
 /** Phases put at most once per segment, and never backwards. */
-type TddPhase = 'red' | 'green' | 'refactor'
-const isTddPhase = (e: TaskEvent) => e.phase === 'red' || e.phase === 'green' || e.phase === 'refactor'
+const isTddPhase = (e: TaskEvent) => tddRank(e.phase) >= 0
 
-/** A task's segment starts at its last `brief`, `writing` or `fix` event (`-1` when none): each one restarts TDD. */
+/** A `brief`, `writing` or `fix` event: each one restarts TDD. */
+function startsSegment(e: TaskEvent): boolean {
+  return e.phase === 'brief' || e.phase === 'writing' || e.phase === 'fix'
+}
+
+/** A task's segment starts at its last segment-starting event (`-1` when none). */
 function segmentStart(t: TaskState): number {
-  for (let i = t.trail.length - 1; i >= 0; i--) {
-    const p = t.trail[i]!.phase
-    if (p === 'brief' || p === 'writing' || p === 'fix') return i
-  }
+  for (let i = t.trail.length - 1; i >= 0; i--) if (startsSegment(t.trail[i]!)) return i
   return -1
 }
 
@@ -138,7 +120,7 @@ function reportPhase(t: TaskState, phase: TddPhase, at: number): TaskState {
     if (t.trail[i]!.phase !== phase) continue
     return { ...t, trail: t.trail.map((e, j) => (j === i ? { ...e, origin: 'reported' as const } : e)) }
   }
-  if (phase === 'red' && segmentOf(t).some(e => e.phase === 'green')) return t
+  if (segmentOf(t).some(e => tddRank(e.phase) > tddRank(phase))) return t
   return push(t, { phase, at, origin: 'reported' })
 }
 

@@ -1,5 +1,5 @@
 import type { Action, RunState, TaskPhase, TaskState, TraceEntry } from '../types'
-import { currentTask } from './reduce.ts'
+import { currentTask } from './selectors.ts'
 
 /** The task `a` is about: the one it names, or its agent's, when the run has it. */
 function namedTask(a: Action, s: RunState): TaskState | undefined {

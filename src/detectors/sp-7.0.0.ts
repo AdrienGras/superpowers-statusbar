@@ -4,7 +4,7 @@ import type {
 import { ALL_PHASES } from '../instrument.ts'
 import { parsePlan } from '../plan.ts'
 import { parseLedger } from '../ledger.ts'
-import { tddTask } from '../reduce.ts'
+import { tddTask } from '../selectors.ts'
 import { isSuperpowersScript, isWorkPath, matchesPlanRun, redirectTargets } from '../tdd.ts'
 
 /** A string superpowers 7.0.0 must still contain for a detection rule to hold. `file` is relative to the plugin root. */
@@ -149,8 +149,9 @@ function toolUsed(e: ToolEvent, s: RunState | null): Detection {
   switch (e.tool) {
     case REPORT_TOOL: {
       const phase = str(e.input.phase)
-      if (!phase || !REPORTED_PHASES.has(phase)) return d
-      d.actions.push({ type: 'phase-reported', phase: phase as ReportedPhase, ...(e.agentId ? { agentId: e.agentId } : {}), at: e.at })
+      if (phase && REPORTED_PHASES.has(phase)) {
+        d.actions.push({ type: 'phase-reported', phase: phase as ReportedPhase, ...(e.agentId ? { agentId: e.agentId } : {}), at: e.at })
+      }
       break
     }
     case 'Write': fileWritten(e, s, d); break
