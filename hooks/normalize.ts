@@ -10,7 +10,7 @@ const ENVELOPE: ReadonlySet<string> = new Set(['tool', 'tool_use_id', 'agentId',
 export function toolEvent(e: ToolCallInput, ran: ToolCallResult, at: number): Extract<ObservedEvent, { kind: 'tool' }> {
   const input = Object.fromEntries(Object.entries(e).filter(([k]) => !ENVELOPE.has(k)))
   const outcome = ran.deny !== undefined
-    ? { text: ran.deny, isError: true }
+    ? { text: ran.deny, isError: true, isDenied: true as const }
     : {
         ...(ran.result !== undefined ? { result: ran.result } : {}),
         ...(ran.text !== undefined ? { text: ran.text } : {}),

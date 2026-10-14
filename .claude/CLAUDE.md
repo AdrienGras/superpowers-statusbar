@@ -37,6 +37,7 @@ src/detectors/sp-7.0.0.ts (détecteurs + MARKERS) ─┤
   - l'entrée dans un skill est détectée sur `tool.call` `Skill` (skill lancé par le modèle, porte l'`agentId`) et sur `command.run` (skill tapé `/superpowers:…`) ; `skill.prompt` n'est plus observé ;
   - les débuts de dispatch viennent de `agent.spawn`, l'appel d'outil `Agent` apportant la réponse en avant-plan ou servant de repli ;
   - les phases (brainstorming, plan, TDD) arrivent par l'outil `mcp__superpowers-statusbar__report_phase`, dont la **description** contient les consignes (`isDeferred: false`).
+- `prompt.compose`, `prompt.context`, `prompt.section` et `prompt.attachment` ne sont **jamais appelés** pour un mod utilisateur. Des hooks classiques `SessionStart` / `SubagentStart`, déclarés dans `hooks/hooks.json` à côté de `modules`, fonctionnent (`additionalContext`) : ils font un `cat` de JSON pré-généré dans `hooks/context/` (`npm run context`, depuis `src/instrument.ts`).
 - Une réponse de plugin à `tool.call` est `{ result: ... }`. Le `text` de premier niveau est réservé au moteur.
 - Les déclarations de l'API sont dans `.claude-plugin/types/claude-code/index.d.ts` (gitignoré, environ 21 000 lignes, à parcourir avec grep). Le moteur les régénère à chaque chargement du mod via `--plugin-dir`.
 
@@ -44,11 +45,12 @@ src/detectors/sp-7.0.0.ts (détecteurs + MARKERS) ─┤
 
 ```bash
 claude plugin test .          # npm test — tous les *.test.ts(x)
-npm run typecheck             # tsc du mod + des scripts
+npm run typecheck             # tsc du mod + des scripts, puis vérifie que hooks/context/*.json est à jour
 claude plugin validate .      # npm run validate
-npm run contract -- ~/.claude/plugins/cache/superpowers-marketplace/superpowers/7.0.0   # marqueurs superpowers (48 OK)
+npm run contract -- ~/.claude/plugins/cache/superpowers-marketplace/superpowers/7.0.0   # marqueurs superpowers (52 OK)
 npm run local                 # parseurs sur données réelles de fixtures-local/ (n'affiche jamais leur contenu)
-bash scripts/e2e.sh <dossier superpowers> all   # e2e réel claude -p : COÛTE DES TOKENS, plusieurs minutes
+bash scripts/e2e.sh <dossier superpowers> all [npm|bats|all]   # e2e réel claude -p : COÛTE DES TOKENS, plusieurs minutes
+npm run context               # régénère hooks/context/*.json après un changement de src/instrument.ts (--check vérifie)
 claude --plugin-dir /srv/AdrienGras/superpowers-statusbar   # essai live avec rechargement à chaud
 ```
 
@@ -69,8 +71,9 @@ claude --plugin-dir /srv/AdrienGras/superpowers-statusbar   # essai live avec re
 - Lancé avec `--setting-sources project,local`, ce qui isole de la config utilisateur : le hook RTK global, le CLAUDE.md global et les plugins installés. Sans ça, le hook RTK réécrit `git`/`cat` en `rtk …` et les commandes sont refusées.
 - `--permission-mode acceptEdits` plus une liste d'outils autorisés. **Ce n'est pas un bac à sable** : `node --test`, `npm test` et `git` exécutent du code. À lancer seulement sur une machine où c'est acceptable.
 - `--model sonnet`. `claude -p` attend bien les subagents lancés en arrière-plan.
-- En mode inline, le contrôleur n'appelle pas `report_phase`. C'est un avertissement et non un échec (ticket #3).
-- Les traces sont copiées dans `fixtures-local/e2e/`.
+- Deux fixtures : `e2e/fixture` (npm, `node --test`) et `e2e/fixture-bats` (bibliothèque bash testée avec `bats`, qui doit être installé).
+- RED puis GREEN par tâche faite : erreur dans les deux modes ; avertissement `red/green not reported by the model` quand le modèle ne les a pas signalés lui-même.
+- Trace et stream sont copiés dans `fixtures-local/e2e/<version>-<fixture>-<mode>-<stamp>.{trace,stream}.jsonl`.
 
 ## Workflow
 

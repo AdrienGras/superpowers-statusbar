@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "test": "claude plugin test .",
-    "typecheck": "tsc -p . && tsc -p tsconfig.scripts.json",
+    "typecheck": "tsc -p . && tsc -p tsconfig.scripts.json && node scripts/gen-context.ts --check",
+    "context": "node scripts/gen-context.ts",
     "contract": "node scripts/contract-check.ts",
     "local": "node scripts/local-fixtures.ts",
     "e2e": "bash scripts/e2e.sh",

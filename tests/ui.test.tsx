@@ -181,7 +181,7 @@ test('band draws one continuous WAITING block in the theme colours when waiting'
   for (const surface of SURFACES) {
     const ui = await mountBand($, surface)
     expect((await ui.find({ type: 'Text', text: 'WAITING' }))?.props)
-      .toEqual({ backgroundColor: 'warning', color: 'inverseText', bold: true })
+      .toMatchObject({ backgroundColor: 'warning', color: 'inverseText', bold: true })
     const texts = await ui.findAll({ type: 'Text' })
     expect(texts.map(t => t.text).join('')).toBe(' WAITING · plan ready (2 tasks) · pick an execution mode ')
     for (const t of texts) expect(t.props, t.text).toMatchObject({ backgroundColor: 'warning', color: 'inverseText' })

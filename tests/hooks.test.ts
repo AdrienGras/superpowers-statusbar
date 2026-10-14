@@ -79,7 +79,7 @@ test('toolEvent flattens the call into input and keeps the outcome', () => {
   expect(toolEvent({ tool: 'Bash', tool_use_id: 'u2', command: 'false' }, { isError: true, result: 'exit 1', text: 'exit 1' }, 6))
     .toStrictEqual({ kind: 'tool', tool: 'Bash', input: { command: 'false' }, result: 'exit 1', text: 'exit 1', isError: true, at: 6 })
   expect(toolEvent({ tool: 'Bash', tool_use_id: 'u3', command: 'rm -rf /' }, { deny: 'no' }, 7))
-    .toStrictEqual({ kind: 'tool', tool: 'Bash', input: { command: 'rm -rf /' }, text: 'no', isError: true, at: 7 })
+    .toStrictEqual({ kind: 'tool', tool: 'Bash', input: { command: 'rm -rf /' }, text: 'no', isError: true, isDenied: true, at: 7 })
 })
 
 test('a Skill call that ran also yields its skill event, first', () => {

@@ -1,6 +1,6 @@
 import { test, expect } from 'claude-code/testing'
 
-import type { ObservedEvent, RunState, Stage } from '../types'
+import type { ObservedEvent, RunState, Stage, TaskState } from '../types'
 import { detect } from '../src/detectors/index.ts'
 import { newRun } from '../src/reduce.ts'
 import { removesWorkspace } from '../src/detectors/sp-7.0.0.ts'
@@ -442,4 +442,85 @@ test('other answers only end the turn', () => {
   const unanswered = state('finishing')
   expect(detect({ kind: 'turn-end', answer: 'Keeping branch feat/x.', at: AT }, unanswered).actions)
     .toEqual([{ type: 'turn-ended', at: AT }])
+})
+
+// --- observed work (red / green) ---
+
+const RUN = 'bats test/text.bats'
+const task1 = (extra: Partial<TaskState> = {}): TaskState =>
+  ({ n: '1', title: 'Slugify', steps: 5, status: 'active', fixRounds: 0, trail: [], runs: [RUN], ...extra })
+const direct = (extra: Partial<TaskState> = {}) => state('exec', { mode: 'direct', tasks: [task1(extra)], isPlanLoaded: true })
+const sdd = (stage: Stage = 'exec') => state(stage, {
+  mode: 'sdd', tasks: [task1({ implementerId: 'impl' })], isPlanLoaded: true,
+  agents: {
+    impl: { role: 'implementer', task: '1', isRunning: true },
+    rev: { role: 'reviewer', task: '1', isRunning: true },
+  },
+})
+const work = (e: ToolEvent, s: RunState) => detect(e, s).actions.filter(a => a.type === 'work-observed')
+const observed = (wrote: boolean, ran: boolean, agentId?: string) =>
+  [{ type: 'work-observed', task: '1', wrote, ran, ...(agentId ? { agentId } : {}), at: AT }]
+
+test('an Edit of a work file is a write', () => {
+  expect(work(tool('Edit', { file_path: '/r/test/text.bats' }), direct())).toEqual(observed(true, false))
+  expect(work(tool('Write', { file_path: '/r/src/text.sh', content: 'x' }), direct())).toEqual(observed(true, false))
+  expect(work(tool('MultiEdit', { file_path: '/r/src/text.sh' }), direct())).toEqual(observed(true, false))
+  expect(work(tool('NotebookEdit', { file_path: '/r/nb.ipynb' }), direct())).toEqual(observed(true, false))
+  expect(work(tool('Edit', { file_path: '/r/src/text.sh' }, { isError: true, text: 'String not found' }), direct())).toEqual([])
+  expect(work(tool('Read', { file_path: '/r/src/text.sh' }), direct())).toEqual([])
+})
+
+test('a plan run that fails without a pipe still ran', () => {
+  expect(work(bash(RUN, 'Exit code 1\nnot ok 1 slugify', { isError: true }), direct())).toEqual(observed(false, true))
+  expect(work(bash(RUN, '1..1\nok 1 slugify'), direct())).toEqual(observed(false, true))
+  expect(work(bash('npm test', 'ok'), direct())).toEqual([])
+})
+
+test('a refused or denied call never counts', () => {
+  const refused = bash(`cat >> test/text.bats <<'EOF'\nx\nEOF\n${RUN}`, 'Contains brace with quote character (expansion obfuscation)', { isError: true })
+  expect(work(refused, direct())).toEqual([])
+  expect(work(bash(RUN, 'not allowed', { isError: true, isDenied: true }), direct())).toEqual([])
+  expect(work(bash(RUN, 'Exit code 1', { isError: true, isDenied: true }), direct())).toEqual([])
+  expect(work(tool('Edit', { file_path: '/r/src/text.sh' }, { isError: true, isDenied: true, text: 'no' }), direct())).toEqual([])
+})
+
+test('a heredoc write and a run in one call give wrote and ran', () => {
+  const both = bash(`cat >> test/text.bats <<'EOF'\n@test x { true; }\nEOF\n${RUN}`, '1..1\nok 1 x')
+  expect(work(both, direct())).toEqual(observed(true, true))
+  expect(work(bash('echo x > src/text.sh'), direct())).toEqual(observed(true, false))
+  expect(work(bash(`${RUN} > /dev/null 2>&1`), direct())).toEqual(observed(false, true))
+  expect(work(bash(`echo x >> ${WS}/progress.md`), direct())).toEqual([])
+})
+
+test('a plan run that logs its own output is a run, not a write', () => {
+  expect(work(bash(`${RUN} > /tmp/bats.log 2>&1; tail /tmp/bats.log`, '1..1'), direct())).toEqual(observed(false, true))
+  expect(work(bash(`${RUN} 2>&1 | tee test-output.txt`, '1..1'), direct())).toEqual(observed(false, true))
+  expect(work(bash(`${RUN} 2>/dev/null`, '1..1'), direct())).toEqual(observed(false, true))
+  expect(work(bash('grep -rn "=> foo" src', ''), direct())).toEqual([])
+  expect(work(bash('node -e "const f = x => x; console.log(f(1))"', '1'), direct())).toEqual([])
+})
+
+test('task-done and the ledger are not work', () => {
+  const done = bash(`/x/scripts/task-done plan.md 1 abc -- ${RUN}`, 'ok')
+  expect(work(done, direct())).toEqual([])
+  expect(work(tool('Write', { file_path: `${WS}/progress.md`, content: 'Task 1: complete' }), direct())).toEqual([])
+  expect(work(tool('Write', { file_path: '/r/docs/superpowers/plans/p.md', content: 'x' }), direct())).toEqual([])
+})
+
+test('a reviewer running the tests is not work; an implementer is', () => {
+  expect(work(bash(RUN, 'ok 1', { agentId: 'rev' }), sdd())).toEqual([])
+  expect(work(bash(RUN, 'ok 1', { agentId: 'impl' }), sdd())).toEqual(observed(false, true, 'impl'))
+  expect(work(bash(RUN, 'ok 1'), sdd())).toEqual([])
+  expect(work(bash(RUN, 'ok 1', { agentId: 'stranger' }), sdd())).toEqual([])
+})
+
+test('nothing before exec, and no run for a task without runs', () => {
+  const planning = state('plan', { mode: 'direct', tasks: [task1()] })
+  expect(work(tool('Edit', { file_path: '/r/src/text.sh' }), planning)).toEqual([])
+  expect(work(bash(RUN, 'ok 1', { agentId: 'impl' }), sdd('final-review'))).toEqual([])
+  expect(work(tool('Edit', { file_path: '/r/src/text.sh' }), state('exec'))).toEqual([])
+  const { runs: _runs, ...bare } = task1()
+  const noRuns = state('exec', { mode: 'direct', tasks: [bare], isPlanLoaded: true })
+  expect(work(bash(RUN, 'ok'), noRuns)).toEqual([])
+  expect(work(tool('Edit', { file_path: '/r/src/text.sh' }), noRuns)).toEqual(observed(true, false))
 })

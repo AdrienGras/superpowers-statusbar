@@ -1,7 +1,7 @@
 import { test, expect } from 'claude-code/testing'
 
 import type { Action, RunState } from '../types'
-import { reduce, newRun, currentTask } from '../src/reduce.ts'
+import { reduce, newRun, currentTask, tddTask } from '../src/reduce.ts'
 import { parseReport } from '../src/reports.ts'
 
 const run = (s: RunState | null, actions: Action[]): RunState | null =>
@@ -297,8 +297,8 @@ test('tdd phases without agent land on the current task, verify closes it', () =
   ])
   const t = task(s, '1')
   expect(t.trail).toEqual([
-    { phase: 'brief', at: 30 }, { phase: 'red', at: 31 }, { phase: 'green', at: 32 }, { phase: 'refactor', at: 33 },
-    { phase: 'verify', at: 34, verdict: 'failed' }, { phase: 'verify', at: 35 }, { phase: 'done', at: 35 },
+    { phase: 'brief', at: 30 }, { phase: 'red', at: 31, origin: 'reported' }, { phase: 'green', at: 32, origin: 'reported' },
+    { phase: 'refactor', at: 33, origin: 'reported' }, { phase: 'verify', at: 34, verdict: 'failed' }, { phase: 'verify', at: 35 }, { phase: 'done', at: 35 },
   ])
   expect(t.status).toBe('done')
   expect(t.doneAt).toBe(35)
@@ -516,4 +516,148 @@ test('a turn end while an agent runs clears the previous wait', () => {
     { type: 'turn-ended', at: 32 },
   ]))
   expect(s.waiting).toBeUndefined()
+})
+
+// --- #3: phase origin, segments, observed work ---
+
+const work = (n: string, wrote: boolean, ran: boolean, at: number, agentId?: string): Action =>
+  ({ type: 'work-observed', task: n, wrote, ran, at, ...(agentId ? { agentId } : {}) })
+
+const reported = (phase: 'red' | 'green' | 'refactor', at: number, agentId?: string): Action =>
+  ({ type: 'phase-reported', phase, at, ...(agentId ? { agentId } : {}) })
+
+const inline = (actions: Action[]) => run(execRun('direct'), [{ type: 'task-started', task: '1', at: 30 }, ...actions])
+
+const phasesOf = (s: RunState | null, n = '1') => task(s, n).trail.map(e => e.phase)
+
+const lastOf = (s: RunState | null, phase: 'red' | 'green' | 'refactor', n = '1') => {
+  const e = task(s, n).trail.findLast(x => x.phase === phase)
+  if (!e) throw new Error(`no ${phase} on task ${n}`)
+  return e
+}
+
+test('observed work: a write gives red, a later run gives green, both observed', () => {
+  const s = inline([work('1', true, false, 31), work('1', false, true, 32)])
+  expect(task(s, '1').trail).toEqual([
+    { phase: 'brief', at: 30 }, { phase: 'red', at: 31, origin: 'observed' }, { phase: 'green', at: 32, origin: 'observed' },
+  ])
+  expect(task(s, '1').pendingWriteSegment).toBeUndefined()
+})
+
+test('a run without a write in the segment gives nothing', () => {
+  const s = inline([work('1', false, true, 31)])
+  expect(phasesOf(s)).toEqual(['brief'])
+  // A second write after red adds no red, and a run then still gives green.
+  const t = inline([work('1', true, false, 31), work('1', true, false, 32), work('1', false, true, 33), work('1', false, true, 34)])
+  expect(phasesOf(t)).toEqual(['brief', 'red', 'green'])
+  // A run after green with no new write gives nothing more.
+  expect(lastOf(t, 'green').at).toBe(33)
+})
+
+test('a write and a run in one action give red then green', () => {
+  const s = inline([work('1', true, true, 31)])
+  expect(task(s, '1').trail).toEqual([
+    { phase: 'brief', at: 30 }, { phase: 'red', at: 31, origin: 'observed' }, { phase: 'green', at: 31, origin: 'observed' },
+  ])
+})
+
+test('a reported green after an observed one changes its origin, not the trail', () => {
+  const s = inline([work('1', true, false, 31), work('1', false, true, 32), reported('green', 40)])
+  expect(phasesOf(s)).toEqual(['brief', 'red', 'green'])
+  expect(lastOf(s, 'green')).toEqual({ phase: 'green', at: 32, origin: 'reported' })
+  expect(lastOf(s, 'red').origin).toBe('observed')
+  // A reported red after the first write confirms it the same way.
+  const r = inline([work('1', true, false, 31), reported('red', 35)])
+  expect(task(r, '1').trail).toEqual([{ phase: 'brief', at: 30 }, { phase: 'red', at: 31, origin: 'reported' }])
+})
+
+test('a reported red after green in the same segment is ignored', () => {
+  const s = inline([reported('red', 31), work('1', true, false, 32), reported('green', 33), reported('red', 34)])
+  expect(task(s, '1').trail).toEqual([
+    { phase: 'brief', at: 30 }, { phase: 'red', at: 31, origin: 'reported' }, { phase: 'green', at: 33, origin: 'reported' },
+  ])
+})
+
+test('a write adds red only while the segment has no TDD phase', () => {
+  // Never backwards: a write after a reported green adds no red.
+  const g = inline([reported('green', 31), work('1', true, false, 32)])
+  expect(phasesOf(g)).toEqual(['brief', 'green'])
+  // The usual order: the write puts red, the reported green follows.
+  const s = inline([work('1', true, false, 31), reported('green', 32)])
+  expect(phasesOf(s)).toEqual(['brief', 'red', 'green'])
+  expect(lastOf(s, 'green').origin).toBe('reported')
+  // The pending write is still there: a run does not add a second green.
+  const t = run(s, [work('1', false, true, 33)])
+  expect(phasesOf(t)).toEqual(['brief', 'red', 'green'])
+})
+
+test('a fix round starts a new segment: a stale write does not become green', () => {
+  const base = run(execRun('sdd'), [
+    { type: 'task-started', task: '1', at: 30 },
+    dispatchedAs('a1', 'implementer', '1', 31),
+    work('1', true, false, 32, 'a1'),
+    dispatchedAs('r1', 'reviewer', '1', 33),
+    { type: 'agent-reported', agentId: 'r1', answer: '**Task quality:** Needs fixes', at: 34 },
+    dispatchedAs('a2', 'implementer', '1', 35),
+  ])
+  expect(phasesOf(base)).toEqual(['brief', 'writing', 'red', 'review', 'fix'])
+  const stale = run(base, [work('1', false, true, 36, 'a2')])
+  expect(phasesOf(stale)).toEqual(['brief', 'writing', 'red', 'review', 'fix'])
+  const fresh = run(stale, [work('1', true, false, 37, 'a2'), work('1', false, true, 38, 'a2')])
+  expect(phasesOf(fresh)).toEqual(['brief', 'writing', 'red', 'review', 'fix', 'red', 'green'])
+  expect(task(fresh, '1').trail.slice(5)).toEqual([
+    { phase: 'red', at: 37, origin: 'observed' }, { phase: 'green', at: 38, origin: 'observed' },
+  ])
+})
+
+test('reported phases go once per segment, again after a fix', () => {
+  const s = run(execRun('sdd'), [
+    { type: 'task-started', task: '1', at: 30 },
+    dispatchedAs('a1', 'implementer', '1', 31),
+    reported('red', 32, 'a1'), reported('red', 33, 'a1'), reported('green', 34, 'a1'),
+    dispatchedAs('r1', 'reviewer', '1', 35),
+    { type: 'agent-reported', agentId: 'r1', answer: '**Task quality:** Needs fixes', at: 36 },
+    { type: 'agent-resumed', agentId: 'a1', at: 37 },
+    reported('red', 38, 'a1'), reported('green', 39, 'a1'), reported('refactor', 40, 'a1'), reported('refactor', 41, 'a1'),
+  ])
+  expect(phasesOf(s)).toEqual(['brief', 'writing', 'red', 'green', 'review', 'fix', 'red', 'green', 'refactor'])
+  expect(task(s, '1').trail[2]).toEqual({ phase: 'red', at: 32, origin: 'reported' })
+  expect(lastOf(s, 'refactor')).toEqual({ phase: 'refactor', at: 40, origin: 'reported' })
+})
+
+test('plan-loaded gives runs to an active task', () => {
+  const s = inline([{ type: 'plan-loaded', path: '/p/plan.md', at: 40, tasks: [
+    { n: '1', title: 'Modèle', steps: 3, runs: ['npm test'] }, { n: '2', title: 'Repository', steps: 2, runs: ['npm run e2e'] },
+  ] }])
+  expect(task(s, '1').status).toBe('active')
+  expect(task(s, '1').runs).toEqual(['npm test'])
+  expect(task(s, '2').runs).toEqual(['npm run e2e'])
+  // A reloaded plan without runs for the task takes them away.
+  const t = run(s, [{ type: 'plan-loaded', path: '/p/plan.md', at: 50, tasks: [{ n: '1', title: 'Modèle', steps: 3 }] }])
+  expect(task(t, '1').runs).toBeUndefined()
+  expect('runs' in task(t, '1')).toBe(false)
+})
+
+test('tddTask routes implementers, the inline main loop, and nothing else', () => {
+  const sdd = must(run(execRun('sdd'), [
+    { type: 'task-started', task: '1', at: 30 },
+    { type: 'task-started', task: '2', at: 31 },
+    dispatchedAs('a1', 'implementer', '1', 32),
+    dispatchedAs('r2', 'reviewer', '2', 33),
+  ]))
+  expect(tddTask(sdd, 'a1')?.n).toBe('1')
+  expect(tddTask(sdd, 'r2')).toBeUndefined()
+  expect(tddTask(sdd, 'nobody')).toBeUndefined()
+  expect(tddTask(sdd)).toBeUndefined()
+  const direct = must(inline([]))
+  expect(tddTask(direct)?.n).toBe('1')
+  expect(tddTask(direct, 'x')).toBeUndefined()
+  expect(tddTask(must(execRun('direct')))).toBeUndefined()
+  const finishing = must(run(inline([]), [{ type: 'stage-entered', stage: 'finishing', at: 40 }]))
+  expect(tddTask(finishing)).toBeUndefined()
+})
+
+test('work-observed for an unknown task changes nothing', () => {
+  const s = must(inline([]))
+  expect(reduce(s, work('9', true, true, 31))).toBe(s)
 })

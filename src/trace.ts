@@ -30,6 +30,7 @@ export function traceEntry(a: Action, s: RunState | null, prev?: RunState | null
     const last = t.trail[t.trail.length - 1]
     if (last) entry.phase = last.phase
   }
+  if (a.type === 'phase-reported') entry.reported = a.phase
   if (s.waiting) entry.waiting = s.waiting.reason
   if (prev !== undefined) {
     const phases = addedPhases(s, prev)
