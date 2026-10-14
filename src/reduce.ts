@@ -36,6 +36,18 @@ function compareRecency(a: TaskState, b: TaskState): number {
 
 const lastActivity = (t: TaskState) => t.trail[t.trail.length - 1]?.at ?? 0
 
+/**
+ * The task whose TDD work an agent does: with `agentId`, the task of an implementer; without, the current task of an
+ * inline run in exec. Reviewers and every other agent do no TDD work of their own.
+ */
+export function tddTask(s: RunState, agentId?: string): TaskState | undefined {
+  if (agentId !== undefined) {
+    const rec = s.agents[agentId]
+    return rec?.role === 'implementer' && rec.task ? findTask(s, rec.task) : undefined
+  }
+  return s.mode === 'direct' && s.stage === 'exec' ? currentTask(s) : undefined
+}
+
 // --- run helpers ---
 
 function setStage(s: RunState, stage: Stage, at: number): RunState {
@@ -88,6 +100,48 @@ function fix(t: TaskState, at: number): TaskState {
   return { ...push(t, { phase: 'fix', at, round }), fixRounds: round }
 }
 
+/** Phases put at most once per segment, and never backwards. */
+type TddPhase = 'red' | 'green' | 'refactor'
+const isTddPhase = (e: TaskEvent) => e.phase === 'red' || e.phase === 'green' || e.phase === 'refactor'
+
+/** A task's segment starts at its last `brief`, `writing` or `fix` event (`-1` when none): each one restarts TDD. */
+function segmentStart(t: TaskState): number {
+  for (let i = t.trail.length - 1; i >= 0; i--) {
+    const p = t.trail[i]!.phase
+    if (p === 'brief' || p === 'writing' || p === 'fix') return i
+  }
+  return -1
+}
+
+const segmentOf = (t: TaskState) => t.trail.slice(segmentStart(t) + 1)
+
+/** Work seen on the task: a first write gives `red`; a run after a write in the same segment gives `green`. */
+function observeWork(t: TaskState, a: ActionOf<'work-observed'>): TaskState {
+  const start = segmentStart(t)
+  let u = t
+  if (a.wrote) {
+    if (!segmentOf(u).some(isTddPhase)) u = push(u, { phase: 'red', at: a.at, origin: 'observed' })
+    u = { ...u, pendingWriteSegment: start }
+  }
+  if (a.ran && u.pendingWriteSegment === start) {
+    const { pendingWriteSegment: _consumed, ...rest } = u
+    const hasGreen = segmentOf(rest).some(e => e.phase === 'green' || e.phase === 'refactor')
+    u = hasGreen ? rest : push(rest, { phase: 'green', at: a.at, origin: 'observed' })
+  }
+  return u
+}
+
+/** A reported phase confirms the one already in the segment, is dropped when backwards, or is added. */
+function reportPhase(t: TaskState, phase: TddPhase, at: number): TaskState {
+  const start = segmentStart(t)
+  for (let i = t.trail.length - 1; i > start; i--) {
+    if (t.trail[i]!.phase !== phase) continue
+    return { ...t, trail: t.trail.map((e, j) => (j === i ? { ...e, origin: 'reported' as const } : e)) }
+  }
+  if (phase === 'red' && segmentOf(t).some(e => e.phase === 'green')) return t
+  return push(t, { phase, at, origin: 'reported' })
+}
+
 const isReview = (e: TaskEvent) => e.phase === 'review' || e.phase === 're-review'
 
 const hasReview = (t: TaskState) => t.trail.some(isReview)
@@ -134,6 +188,7 @@ export function reduce(s: RunState | null, a: Action): RunState | null {
     }
     case 'agent-resumed': return agentResumed(s, a)
     case 'agent-reported': return agentReported(s, a)
+    case 'work-observed': return mapTask(s, a.task, t => observeWork(t, a))
     case 'task-verified':
       return upsertTask(s, a.task, t =>
         a.isOk ? finish(push(t, { phase: 'verify', at: a.at }), a.at) : push(t, { phase: 'verify', at: a.at, verdict: 'failed' }))
@@ -200,7 +255,7 @@ function phaseReported(s: RunState, a: ActionOf<'phase-reported'>): RunState {
     const rec = a.agentId ? s.agents[a.agentId] : undefined
     if (rec && rec.role !== 'implementer' && WORKER_ROLES.has(rec.role)) return s
     const n = rec?.role === 'implementer' && rec.task && findTask(s, rec.task) ? rec.task : currentTask(s)?.n
-    return n ? mapTask(s, n, t => push(t, { phase: a.phase as TaskPhase, at: a.at })) : s
+    return n ? mapTask(s, n, t => reportPhase(t, a.phase as TddPhase, a.at)) : s
   }
   const next = { ...s, stagePhase: a.phase }
   if (a.phase === 'builder-check') return addMilestone(next, { stage: 'brainstorm', label: 'builder check', at: a.at })
@@ -211,7 +266,10 @@ function phaseReported(s: RunState, a: ActionOf<'phase-reported'>): RunState {
 function planLoaded(s: RunState, a: ActionOf<'plan-loaded'>): RunState {
   const tasks = a.tasks.map((p): TaskState => {
     const old = findTask(s, p.n)
-    if (old && old.status !== 'todo') return { ...old, title: p.title, steps: p.steps }
+    if (old && old.status !== 'todo') {
+      const { runs: _old, ...kept } = old
+      return { ...kept, title: p.title, steps: p.steps, ...(p.runs ? { runs: p.runs } : {}) }
+    }
     return { ...p, status: 'todo', fixRounds: 0, trail: [] }
   })
   const steps = a.tasks.reduce((sum, t) => sum + t.steps, 0)

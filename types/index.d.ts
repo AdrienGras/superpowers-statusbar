@@ -9,7 +9,11 @@ export type TaskPhase =
   | 'red' | 'green' | 'refactor' | 'verify' | 'done' | 'unknown'
 export type ImplementerStatus = 'DONE' | 'DONE_WITH_CONCERNS' | 'BLOCKED' | 'NEEDS_CONTEXT'
 export type PlanTask = { n: string; title: string; steps: number; runs?: string[] }
-export type TaskEvent = { phase: TaskPhase; at: number; round?: number; verdict?: string }
+export type TaskEvent = {
+  phase: TaskPhase; at: number; round?: number; verdict?: string
+  /** On `red` / `green` / `refactor` only: reported by the model (`report_phase`) or observed from its work. */
+  origin?: 'reported' | 'observed'
+}
 export type TaskState = PlanTask & {
   status: 'todo' | 'active' | 'done'
   startedAt?: number; doneAt?: number
@@ -17,6 +21,8 @@ export type TaskState = PlanTask & {
   /** When the task was last activated (its implementer dispatched or its script run); `startedAt` is the first time. */
   activeAt?: number
   implementerId?: string; lastStatus?: ImplementerStatus; isBreakerTripped?: boolean
+  /** The trail index where the segment of an unconsumed write starts (`-1`: the whole trail); a run then gives green. */
+  pendingWriteSegment?: number
 }
 export type AgentRoleName = 'implementer' | 'reviewer' | 're-reviewer' | 'final-reviewer' | 'builder-check' | 'other' | 'unknown'
 export type AgentRecord = { role: AgentRoleName; task?: string; round?: number; isRunning: boolean; pendingAnswer?: string }
@@ -68,6 +74,8 @@ export type Action =
   | { type: 'agent-resumed'; agentId: string; at: number }
   | { type: 'agent-reported'; agentId: string; answer: string; at: number }
   | { type: 'task-verified'; task: string; isOk: boolean; at: number }
+  /** An agent working on `task` wrote a work file and/or ran one of the task's plan run commands. */
+  | { type: 'work-observed'; task: string; agentId?: string; wrote: boolean; ran: boolean; at: number }
   | { type: 'ledger-loaded'; lines: LedgerLine[]; at: number }
   | { type: 'workspace-removed'; at: number }
   | { type: 'branch-finished'; at: number }
