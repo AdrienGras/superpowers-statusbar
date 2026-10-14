@@ -38,3 +38,93 @@ test('isSuperpowersScript spots task-start and task-done', () => {
   expect(isSuperpowersScript('git commit -q -m x && /sp/skills/executing-plans/scripts/task-done plan.md 2 abc -- npm test')).toBe(true)
   expect(isSuperpowersScript('npm test')).toBe(false)
 })
+
+// --- final review fixes ---
+
+test('a plan run\'s own output redirect is not a write', () => {
+  expect(redirectTargets('npm test > /tmp/out.log 2>&1; tail /tmp/out.log', ['npm test'])).toEqual([])
+  expect(redirectTargets('npm test 2>&1 | tee test-output.txt', ['npm test'])).toEqual([])
+  expect(redirectTargets('bats test/text.bats > /tmp/bats.log', ['bats test/text.bats'])).toEqual([])
+  expect(redirectTargets('cd /r && npm test 2>&1 | tee -a results.txt', ['npm test'])).toEqual([])
+})
+
+test('a write before the run in the same call is still a write', () => {
+  expect(redirectTargets("cat >> test/t.bats <<'EOF'\n@test x { run slugify 'a > b'; }\nEOF\nbats test/t.bats", ['bats test/t.bats']))
+    .toEqual(['test/t.bats'])
+  expect(redirectTargets('echo x > src/a.js && npm test', ['npm test'])).toEqual(['src/a.js'])
+  expect(redirectTargets('npm test > out.txt', ['bats test/t.bats'])).toEqual(['out.txt'])
+})
+
+test('isWorkPath keeps repositories under /tmp and drops log files', () => {
+  expect(isWorkPath('/tmp/sp-e2e.X/npm-direct/repo/src/text.js')).toBe(true)
+  expect(isWorkPath('/tmp/out.log')).toBe(false)
+  expect(isWorkPath('build.log')).toBe(false)
+})
+
+test('a redirect needs a word boundary and sits outside quotes', () => {
+  expect(redirectTargets('grep -rn "=> foo" src')).toEqual([])
+  expect(redirectTargets('node -e "const f = x => x; console.log(f(1))"')).toEqual([])
+  expect(redirectTargets("echo 'a > b' && grep -c '>>' src/a.js")).toEqual([])
+  expect(redirectTargets('a=>b')).toEqual([])
+  expect(redirectTargets('echo x >src/a.js')).toEqual(['src/a.js'])
+  expect(redirectTargets('echo x >> "src/a b.js"')).toEqual(['src/a b.js'])
+  expect(redirectTargets('make 2> err.txt')).toEqual(['err.txt'])
+  expect(redirectTargets('make &> all.txt')).toEqual(['all.txt'])
+  expect(redirectTargets("cat > src/a.js <<'EOF'\nconst f = x => x\nif (a > b) {}\nEOF")).toEqual(['src/a.js'])
+})
+
+test('tee is a write only as a command word', () => {
+  expect(redirectTargets('grep -n tee src/x.sh')).toEqual([])
+  expect(redirectTargets('echo x | tees out.txt')).toEqual([])
+  expect(redirectTargets('echo tee out.txt')).toEqual([])
+  expect(redirectTargets('echo x | tee -a notes.txt')).toEqual(['notes.txt'])
+  expect(redirectTargets('tee src/a.txt < in.txt')).toEqual(['src/a.txt'])
+})
+
+test('redirectTargets lists /dev/null, which is no work path', () => {
+  expect(redirectTargets('ls src 2>/dev/null')).toEqual(['/dev/null'])
+  expect(redirectTargets('ls src 2>/dev/null').some(isWorkPath)).toBe(false)
+})
+
+test('matchesPlanRun skips VAR= chains', () => {
+  expect(matchesPlanRun('CI=1 FORCE_COLOR=0 npm test', ['npm test'])).toBe(true)
+  expect(matchesPlanRun('npm test', ['NODE_ENV=test npm test'])).toBe(true)
+  expect(matchesPlanRun('CI=1 npm install', ['npm test'])).toBe(false)
+})
+
+test('matchesPlanRun takes any of several plan runs', () => {
+  const runs = ['bats test/a.bats --filter x', 'bats test/b.bats', 'npm run lint']
+  expect(matchesPlanRun('bats test/b.bats', runs)).toBe(true)
+  expect(matchesPlanRun('bats /r/test/a.bats', runs)).toBe(true)
+  expect(matchesPlanRun('npm run lint -- --fix', runs)).toBe(true)
+  expect(matchesPlanRun('bats test/c.bats', runs)).toBe(false)
+  expect(matchesPlanRun('npm run build', runs)).toBe(false)
+})
+
+test('a program-only plan run also needs its flags', () => {
+  expect(matchesPlanRun('node -e "1"', ['node --test'])).toBe(false)
+  expect(matchesPlanRun('node scripts/x.js', ['node --test'])).toBe(false)
+  expect(matchesPlanRun('node --test', ['node --test'])).toBe(true)
+  expect(matchesPlanRun('node --test 2>&1 | tail', ['node --test'])).toBe(true)
+  expect(matchesPlanRun('pytest tests/a.py', ['pytest -x'])).toBe(false)
+  expect(matchesPlanRun('pytest -x -q', ['pytest -x'])).toBe(true)
+  expect(matchesPlanRun('pytest -q', ['pytest'])).toBe(true)
+})
+
+test('a plan run starting with cd matches on its first other segment', () => {
+  expect(matchesPlanRun('cd backend && pytest tests/ -v', ['cd backend && pytest tests/'])).toBe(true)
+  expect(matchesPlanRun('cd /r/backend; uv run pytest', ['cd backend && uv run pytest'])).toBe(true)
+  expect(matchesPlanRun('uv run python x.py', ['cd backend && uv run pytest'])).toBe(false)
+  expect(matchesPlanRun('cd backend', ['cd backend'])).toBe(false)
+})
+
+test('a plan run\'s own redirect is not part of its key', () => {
+  expect(matchesPlanRun('npm test', ['npm test 2>&1 | tail -5'])).toBe(true)
+  expect(matchesPlanRun('npm test', ['npm test > out.txt'])).toBe(true)
+})
+
+test('heredoc bodies and comments are neither runs nor writes', () => {
+  expect(matchesPlanRun("cat > run.sh <<'EOF'\nbats test/t.bats\nEOF", ['bats test/t.bats'])).toBe(false)
+  expect(matchesPlanRun('ls # then bats test/t.bats', ['bats test/t.bats'])).toBe(false)
+  expect(redirectTargets('ls # > notes.txt')).toEqual([])
+})

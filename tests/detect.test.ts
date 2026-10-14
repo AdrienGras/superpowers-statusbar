@@ -492,6 +492,14 @@ test('a heredoc write and a run in one call give wrote and ran', () => {
   expect(work(bash(`echo x >> ${WS}/progress.md`), direct())).toEqual([])
 })
 
+test('a plan run that logs its own output is a run, not a write', () => {
+  expect(work(bash(`${RUN} > /tmp/bats.log 2>&1; tail /tmp/bats.log`, '1..1'), direct())).toEqual(observed(false, true))
+  expect(work(bash(`${RUN} 2>&1 | tee test-output.txt`, '1..1'), direct())).toEqual(observed(false, true))
+  expect(work(bash(`${RUN} 2>/dev/null`, '1..1'), direct())).toEqual(observed(false, true))
+  expect(work(bash('grep -rn "=> foo" src', ''), direct())).toEqual([])
+  expect(work(bash('node -e "const f = x => x; console.log(f(1))"', '1'), direct())).toEqual([])
+})
+
 test('task-done and the ledger are not work', () => {
   const done = bash(`/x/scripts/task-done plan.md 1 abc -- ${RUN}`, 'ok')
   expect(work(done, direct())).toEqual([])

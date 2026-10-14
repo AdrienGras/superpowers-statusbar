@@ -190,7 +190,7 @@ function observeWork(e: ToolEvent, s: RunState, d: Detection) {
     wrote = !e.isError && !e.isDenied && !!path && isWorkPath(path)
   } else if (e.tool === 'Bash' && isExecuted(e)) {
     const command = str(e.input.command) ?? ''
-    wrote = redirectTargets(command).some(isWorkPath)
+    wrote = redirectTargets(command, t.runs ?? []).some(isWorkPath)
     ran = !isSuperpowersScript(command) && matchesPlanRun(command, t.runs ?? [])
   }
   if (wrote || ran) d.actions.push({ type: 'work-observed', task: t.n, ...(e.agentId ? { agentId: e.agentId } : {}), wrote, ran, at: e.at })
