@@ -60,7 +60,7 @@ Vérifications de fin : `claude plugin test .`, `npm run typecheck`, `claude plu
 - La description de `report_phase` reste en place comme filet. Ses définitions de `red` et `green` s'alignent sur celles du texte de démarrage, pour que les deux ne se contredisent pas *(mon choix)*. Le reste de la description (brainstorming, writing-plans) ne change pas.
 - Une seule source : le texte servi par le hook est généré depuis `src/instrument.ts`, et un test vérifie qu'ils sont identiques *(mon choix)*.
 - Matcher de `SessionStart` : `startup|resume|clear|compact` *(mon choix : la consigne doit survivre à une compaction et à une reprise)*.
-- Pas d'option pour la couper *(mon choix)*. Elle coûte environ 300 tokens par session et par subagent, ce que le README dit.
+- Pas d'option pour la couper *(mon choix)*. Elle coûte environ 150 tokens (532 caractères) par session et par subagent, ce que le README dit.
 
 ### Piste A : phases déduites des commandes du plan (décidée avec Adrien)
 
@@ -75,11 +75,11 @@ A n'affirme jamais que des tests passent ou échouent. C'est la sémantique de B
 - ses équivalents français (`Lancer :`, `Commande :`, `Exécuter :`) ;
 - le contenu d'un bloc de code dans une étape dont le titre parle de lancer ou de vérifier (`run`, `verify`, `confirm`, `lancer`, `exécuter`, `vérifier`).
 
-Les commandes `git` ne comptent pas. Le repérage reste prudent : une tâche sans commande reconnue n'a pas de phase déduite. Le type `PlanTask` gagne cette liste.
+Les commandes `git` ne comptent pas, ni, *(revue finale)*, celles qui ne font que lire ou chercher (`cat`, `ls`, `grep`, `find`, `head`, `tail`, `wc`, `echo`, `printf`, `diff`, `test`, `[`, `jq`), les mots du shell relevés dans les blocs de script (`set`, `export`, `source`, `for`, `if`, `do`, `done`…) et les lignes réduites à un `cd`. Le programme regardé est celui du premier segment qui n'est pas un `cd`. Le repérage reste prudent : une tâche sans commande reconnue n'a pas de phase déduite. Le type `PlanTask` gagne cette liste.
 
-**Reconnaître un run.** Une commande Bash exécutée correspond à une commande du plan quand l'un de ses segments correspond. Les segments sont séparés par `&&`, `||`, `;`, `|` ou un saut de ligne. Un segment correspond quand son programme (nom de base) est celui de la commande du plan et que le premier argument positionnel de celle-ci figure dans le segment, à l'identique ou comme fin de chemin. Les segments `cd` et les affectations `VAR=x` en tête sont ignorés. Ainsi `npm --prefix /x test`, `cd /x; npm test 2>&1 | tail` et `bats test/text.bats` correspondent à `npm test` et à `bats test/text.bats --filter slugify`.
+**Reconnaître un run.** Une commande Bash exécutée correspond à une commande du plan quand l'un de ses segments correspond. Les segments sont séparés par `&&`, `||`, `;`, `|` ou un saut de ligne. Un segment correspond quand son programme (nom de base) est celui de la commande du plan et que le premier argument positionnel de celle-ci figure dans le segment, à l'identique ou comme fin de chemin. Les segments `cd` et les affectations `VAR=x` en tête sont ignorés, dans la commande exécutée comme dans celle du plan, dont la clé vient du premier segment qui n'est pas un `cd` et s'arrête à sa première redirection *(revue finale)*. Quand cette clé se réduit au programme (`node --test`, `pytest -x`), les options de la commande du plan doivent aussi figurer dans le segment *(revue finale)*. Le découpage ignore ce qui est entre guillemets, les corps de heredoc et les commentaires. Ainsi `npm --prefix /x test`, `cd /x; npm test 2>&1 | tail` et `bats test/text.bats` correspondent à `npm test` et à `bats test/text.bats --filter slugify`.
 
-**Reconnaître une écriture.** `Write`, `Edit`, `MultiEdit` ou `NotebookEdit` réussis, ou une redirection Bash (`>`, `>>`, `tee`) vers un fichier. Sont exclus les chemins sous `.superpowers/`, `docs/superpowers/`, `/dev/` et `.claude/`. Un appel Bash qui écrit puis lance compte comme écriture puis run.
+**Reconnaître une écriture.** `Write`, `Edit`, `MultiEdit` ou `NotebookEdit` réussis, ou une redirection Bash (`>`, `>>`, `tee`) vers un fichier. Sont exclus les chemins sous `.superpowers/`, `docs/superpowers/`, `/dev/` et `.claude/`, et les fichiers `*.log`. *(Revue finale)* Une redirection n'est reconnue qu'en début de mot (`=>` n'en est pas une) et hors guillemets ; `tee` seulement comme commande d'un segment. Les redirections d'un pipeline (segments reliés par `|`) qui lance une commande du plan ne sont pas des écritures : elles ne font que garder la sortie du run, sinon un run de référence comme `npm test > /tmp/out.log` donnerait `red` et `green` d'un coup. `/tmp/` n'est pas exclu, les dépôts des fixtures e2e y vivent. Un appel Bash qui écrit puis lance compte comme écriture puis run.
 
 **Ce qui ne compte jamais :**
 - un appel qui n'a pas tourné, refusé par les permissions ou par les contrôles du shell (au spike : « Contains brace with quote character », « Permission to use Bash has been denied ») ;
@@ -124,7 +124,7 @@ Le modèle de données doit permettre ces contrôles : la trace des tâches ne g
   - une tâche dont le plan ne donne pas de commande de run n'a que les phases signalées par le modèle ;
   - le mod ne lit pas le résultat des tests ;
   - `refactor` dépend du modèle seul ;
-  - la consigne coûte environ 300 tokens par session et par subagent.
+  - la consigne coûte environ 150 tokens par session et par subagent.
 - **Spec de référence** : la section qui parle de `report_phase` et de la description de l'outil est mise à jour *(#3)*.
 - **`.claude/CLAUDE.md`**, « Contraintes du moteur » : hooks `prompt.*` non appelés pour un mod utilisateur, hooks classiques de `hooks.json` qui fonctionnent.
 
