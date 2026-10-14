@@ -27,8 +27,9 @@ for (const file of walk(root)) {
   const inPlans = file.split(sep).slice(0, -1).includes('plans')
   if (/^progress.*\.md$/.test(name)) {
     files++
-    recognized += parseLedger(readFileSync(file, 'utf8')).length
-    readFileSync(file, 'utf8')
+    const text = readFileSync(file, 'utf8')
+    recognized += parseLedger(text).length
+    text
       .split(/\r?\n/)
       .forEach((line, i) => {
         if (LEDGER_CANDIDATE.test(line) && parseLedger(line).length === 0) {
@@ -36,7 +37,7 @@ for (const file of walk(root)) {
           console.log(`✗ ${file}:${i + 1} ledger line not recognised`)
         }
       })
-  } else if (inPlans) {
+  } else if (inPlans && name.endsWith('.md')) {
     files++
     if (parsePlan(readFileSync(file, 'utf8')).length === 0) {
       failures++

@@ -2,7 +2,7 @@ import type { Decision, LedgerLine } from '../types'
 
 const TASK = '([0-9]+[a-z]?)'
 const COMPLETE = new RegExp(`^\\s*Task\\s+${TASK}:\\s*complete\\b`)
-const FIX_ROUND = new RegExp(`^\\s*Task\\s+${TASK}:\\s*fix round\\s+([0-9]+)`)
+const FIX_ROUND = new RegExp(`^\\s*Task\\s+${TASK}:\\s*fix round\\s+([0-9]+)\\b`)
 const PARKED = new RegExp(`^\\s*Task\\s+${TASK}:\\s*parked\\s*[—-]\\s*(.+?)\\s*$`)
 const MINOR = new RegExp(`^\\s*(?:Task\\s+${TASK}|Final):\\s*minor(?:\\s*\\(deferred\\))?\\s*:\\s*(.+?)\\s*$`)
 const RULING = new RegExp(`^\\s*(?:Task\\s+${TASK}:\\s*)?Ruling:\\s*(.+?)\\s*$`)

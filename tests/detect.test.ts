@@ -3,6 +3,7 @@ import { test, expect } from 'claude-code/testing'
 import type { ObservedEvent, RunState, Stage } from '../types'
 import { detect } from '../src/detectors/index.ts'
 import { newRun } from '../src/reduce.ts'
+import { removesWorkspace } from '../src/detectors/sp-7.0.0.ts'
 
 const AT = 50
 const WS = '/repo/.superpowers/sdd/2026-01-01-recettes'
@@ -40,6 +41,12 @@ test('detect maps each run skill to its stage', () => {
     .toEqual([{ type: 'stage-entered', stage: 'exec', mode: 'direct', at }])
   expect(detect({ kind: 'skill', skill: 'superpowers:finishing-a-development-branch', at }, null).actions)
     .toEqual([{ type: 'stage-entered', stage: 'finishing', at }])
+})
+
+test('a slash command naming a run skill enters its stage', () => {
+  expect(detect({ kind: 'command', command: 'superpowers:brainstorming', at: AT }, null).actions)
+    .toEqual([{ type: 'stage-entered', stage: 'brainstorm', at: AT }])
+  expect(detect({ kind: 'command', command: 'compact', at: AT }, null)).toEqual(empty)
 })
 
 test('detect ignores skills outside the run chain', () => {
@@ -167,9 +174,10 @@ test('detect verifies a task on task-done from its ledger line', () => {
 })
 
 test('detect notices the workspace removal', () => {
-  expect(detect(bash(`rm -rf ${WS}`), state('final-review')).actions).toEqual([{ type: 'workspace-removed', at: AT }])
-  expect(detect(bash('rm -rf .superpowers/sdd/recettes/'), state('exec')).actions).toEqual([{ type: 'workspace-removed', at: AT }])
-  expect(detect(bash(`rm -rf ${WS}/task-1-brief.md`), state('exec')).actions).toEqual([])
+  const known = (stage: Stage) => state(stage, { workspace: WS })
+  expect(detect(bash(`rm -rf ${WS}`), known('final-review')).actions).toEqual([{ type: 'workspace-removed', at: AT }])
+  expect(detect(bash('rm -rf .superpowers/sdd/2026-01-01-recettes/'), known('exec')).actions).toEqual([{ type: 'workspace-removed', at: AT }])
+  expect(detect(bash(`rm -rf ${WS}/task-1-brief.md`), known('exec')).actions).toEqual([])
 })
 
 test('detect finishes the branch on merge, push, PR or discard during finishing', () => {
@@ -231,7 +239,7 @@ test('detect takes any review dispatched once every task is done as the final re
     return a?.type === 'agent-dispatched' ? { role: a.role, task: a.task } : undefined
   }
   const task = (n: string, status: 'active' | 'done') => ({ n, title: n, steps: 1, status, fixRounds: 0, trail: [] })
-  const allDone = state('exec', { tasks: [task('1', 'done'), task('2', 'done')] })
+  const allDone = state('exec', { isPlanLoaded: true, tasks: [task('1', 'done'), task('2', 'done')] })
   const midExec = state('exec', { tasks: [task('1', 'done'), task('2', 'active')] })
   expect(role('Whole-branch code review', allDone)).toEqual({ role: 'final-reviewer' })
   expect(role('Final REVIEW of text-utils', state('final-review'))).toEqual({ role: 'final-reviewer' })
@@ -264,6 +272,46 @@ test('detect ignores an Agent call without an agent id', () => {
   expect(detect(agent({ description: 'Implement Task 1: X', prompt: '' }, 'Error'), state('exec'))).toEqual(empty)
 })
 
+// --- agent.spawn ---
+
+type SpawnEvent = Extract<ObservedEvent, { kind: 'spawn' }>
+
+const spawn = (agentId: string, description: string, extra: Partial<SpawnEvent> = {}): SpawnEvent =>
+  ({ kind: 'spawn', agentId, description, prompt: 'p', at: AT, ...extra })
+
+test('an Agent call seen first is not dispatched again by the spawn that follows', () => {
+  const s = state('exec', { agents: { 'impl-1': { role: 'implementer', task: '1', isRunning: true } } })
+  expect(detect(spawn('impl-1', 'Implement Task 1: Modèle'), s).actions).toEqual([])
+  const unknown = state('exec', { agents: { 'impl-1': { role: 'unknown', isRunning: false } } })
+  expect(detect(spawn('impl-1', 'Implement Task 1: Modèle'), unknown).actions).toHaveLength(1)
+})
+
+test('a spawn dispatches the agent, running, with its role', () => {
+  const e = spawn('impl-1', 'Implement Task 1: Modèle', { prompt: '…' })
+  expect(detect(e, state('exec')).actions).toEqual([
+    { type: 'agent-dispatched', agentId: 'impl-1', role: 'implementer', task: '1', isRunning: true, at: AT },
+  ])
+  expect(detect(e, null)).toEqual(empty)
+})
+
+test('an Agent call for an agent seen at spawn only reports a foreground answer', () => {
+  const s = state('exec', { agents: { 'impl-1': { role: 'implementer', task: '1', isRunning: true } } })
+  const input = { description: 'Implement Task 1: Modèle', prompt: 'p' }
+  expect(detect(agent(input, { status: 'async_launched', agentId: 'impl-1' }), s)).toEqual(empty)
+  expect(detect(agent(input, { status: 'completed', agentId: 'impl-1', content: [{ type: 'text', text: 'Status: DONE' }] }), s).actions)
+    .toEqual([{ type: 'agent-reported', agentId: 'impl-1', answer: 'Status: DONE', at: AT }])
+})
+
+test('an Agent call for an agent not seen at spawn dispatches as before', () => {
+  const input = { description: 'Implement Task 1: Modèle', prompt: 'p' }
+  const dispatched = { type: 'agent-dispatched', agentId: 'impl-1', role: 'implementer', task: '1', isRunning: true, at: AT }
+  expect(detect(agent(input, asyncResult('impl-1')), state('exec')).actions).toEqual([dispatched])
+  const other = state('exec', { agents: { 'other-1': { role: 'implementer', task: '1', isRunning: true } } })
+  expect(detect(agent(input, asyncResult('impl-1')), other).actions).toEqual([dispatched])
+  const unknown = state('exec', { agents: { 'impl-1': { role: 'unknown', isRunning: false, pendingAnswer: 'Status: DONE' } } })
+  expect(detect(agent(input, asyncResult('impl-1')), unknown).actions).toEqual([dispatched])
+})
+
 // --- SendMessage, turns, files ---
 
 test('detect resumes a known agent on SendMessage', () => {
@@ -292,4 +340,106 @@ test('detect parses plan and ledger files', () => {
     .toEqual([{ type: 'plan-loaded', path: PLAN_PATH, tasks: [{ n: '1', title: 'A', steps: 1 }], at: AT }])
   expect(detect({ kind: 'file', role: 'ledger', path: `${WS}/progress.md`, text: 'Task 1: complete (x)\nRuling: r', at: AT }, s).actions)
     .toEqual([{ type: 'ledger-loaded', lines: [{ kind: 'complete', task: '1' }, { kind: 'ruling', text: 'r' }], at: AT }])
+})
+
+// --- v0.1.1 edge cases ---
+
+const SDD_SCRIPT = 'bash /home/u/sp/skills/subagent-driven-development/scripts/sdd-workspace'
+
+test('workspace removal is recognised in its usual spellings', () => {
+  const s = state('exec', { workspace: WS })
+  for (const command of [
+    `rm -rf ${WS}`,
+    `rm -fr '${WS}/'`,
+    `rm -r -f -- "${WS}"`,
+    `WS=${WS}; rm -rf "$WS"`,
+    `WS="${WS}" && rm -rf "\${WS}"`,
+    'cd /repo && rm -rf .superpowers/sdd/2026-01-01-recettes',
+  ]) {
+    expect(detect(bash(command), s).actions).toContainEqual({ type: 'workspace-removed', at: AT })
+    expect(removesWorkspace(command, WS)).toBe(true)
+  }
+})
+
+test("only the run's workspace counts", () => {
+  const s = state('exec', { workspace: WS })
+  for (const command of ['rm -rf /repo/.superpowers/sdd/other', 'rm -rf "$WS"', `rm -f ${WS}/progress.md`]) {
+    expect(detect(bash(command), s).actions.map(a => a.type)).not.toContain('workspace-removed')
+  }
+  expect(detect(bash(`rm -rf ${WS}`), state('exec')).actions).toEqual([])
+})
+
+test('sdd-workspace takes the first non-flag argument as the plan', () => {
+  const e = bash(`${SDD_SCRIPT} --quiet ${PLAN_PATH}`, `${WS}\n`)
+  expect(detect(e, state('exec', { mode: 'sdd' })).reads).toContainEqual({ role: 'plan', path: PLAN_READ })
+  const help = detect(bash(`${SDD_SCRIPT} --help`, 'Usage: sdd-workspace PLAN_FILE\n'), state('plan'))
+  expect(help).toEqual(empty)
+})
+
+test('a preview dispatch is not the final review', () => {
+  const s = state('exec', {
+    isPlanLoaded: true,
+    tasks: [{ n: '1', title: 'T', steps: 1, status: 'done', fixRounds: 0, trail: [] }],
+  })
+  const roleOf = (description: string) => {
+    const a = detect(agent({ description, prompt: 'x' }, asyncResult('a1')), s).actions[0]
+    return a && a.type === 'agent-dispatched' ? a.role : undefined
+  }
+  expect(roleOf('Preview the landing page')).toBe('other')
+  expect(roleOf('Revue finale du code')).toBe('final-reviewer')
+  expect(roleOf('Re-review final')).toBe('final-reviewer')
+})
+
+test('tasks are not all done while the plan is unread', () => {
+  const s = state('exec', { tasks: [{ n: '1', title: 'T', steps: 1, status: 'done', fixRounds: 0, trail: [] }] })
+  const a = detect(agent({ description: 'Review the changes', prompt: 'x' }, asyncResult('a1')), s).actions[0]
+  expect(a && a.type === 'agent-dispatched' ? a.role : undefined).toBe('other')
+})
+
+test('sdd-workspace after a finished run starts a new exec run', () => {
+  for (const extra of [{}, { agentId: 'a9' }]) {
+    const e = bash(`${SDD_SCRIPT} ${PLAN_PATH}`, `${WS}\n`, extra)
+    expect(detect(e, state('done')).actions[0]).toEqual({ type: 'stage-entered', stage: 'exec', at: AT })
+  }
+})
+
+test('a subagent\'s skill carries its agentId', () => {
+  const at = 7
+  expect(detect({ kind: 'skill', skill: 'superpowers:finishing-a-development-branch', agentId: 'a1', at }, null).actions)
+    .toEqual([{ type: 'stage-entered', stage: 'finishing', agentId: 'a1', at }])
+})
+
+test('a keep report after the menu was answered finishes the branch', () => {
+  const s = state('finishing', { isMenuAnswered: true })
+  for (const answer of [
+    'Keeping branch feat/x. Worktree preserved at /w.',
+    'Je garde la branche feat/x telle quelle.',
+    'Branche feat/x conservée.',
+    'Je garderai la branche feat/x.',
+    'Nous conservons la branche.',
+  ]) {
+    expect(detect({ kind: 'turn-end', answer, at: AT }, s).actions).toEqual([{ type: 'branch-finished', at: AT }])
+  }
+})
+
+test('other answers only end the turn', () => {
+  const s = state('finishing', { isMenuAnswered: true })
+  for (const answer of [
+    'I rebased onto main, keeping the branch history linear.',
+    'Fixed the tests; keeping the branch up to date with main.',
+    "D'accord, je garde la branche telle quelle et je corrige les tests.",
+    'Keeping the branch feat/x.',
+    "This will permanently delete feat/x. Type 'discard' to confirm.",
+    'Je corrige les tests.',
+    '3. Garder la branche telle quelle',
+    'Do you want me to keep the branch? Keeping branch feat/x?',
+    'Tu veux que je garde la branche ?',
+    "I'm not keeping the branch.",
+    'Je ne garde pas la branche.',
+  ]) {
+    expect(detect({ kind: 'turn-end', answer, at: AT }, s).actions).toEqual([{ type: 'turn-ended', at: AT }])
+  }
+  const unanswered = state('finishing')
+  expect(detect({ kind: 'turn-end', answer: 'Keeping branch feat/x.', at: AT }, unanswered).actions)
+    .toEqual([{ type: 'turn-ended', at: AT }])
 })

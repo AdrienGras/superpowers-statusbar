@@ -55,6 +55,12 @@ export function checkTrace(entries: readonly TraceEntry[], mode: Mode, expectedT
     warnings.push('no task goes through red then green')
   }
 
+  // A dispatch observed at `agent.spawn` is the normal path in SDD; only the `tool.call` fallback means the engine did not show spawns.
+  const dispatches = entries.filter(e => e.action === 'agent-dispatched')
+  if (mode === 'sdd' && dispatches.length > 0 && dispatches.every(e => e.via === 'tool')) {
+    warnings.push('no dispatch seen at agent.spawn (tool.call fallback only)')
+  }
+
   if (isFinishingReached) {
     const last = entries[entries.length - 1]
     if (last?.waiting !== 'finishing-menu') {

@@ -32,22 +32,22 @@ test('turn end with a running background agent is not waiting', () => {
 test('turn end in plan with tasks waits for the execution choice', () => {
   const s = must(run(null, [{ type: 'stage-entered', stage: 'plan', at: 1 }, PLAN, ended(30)]))
   expect(s.waiting).toEqual({ reason: 'execution-choice', since: 30 })
-  expect(waitText(s)).toBe('plan ready (3 tasks) · pick an execution mode')
+  expect(waitText(s, s.waiting!)).toBe('plan ready (3 tasks) · pick an execution mode')
 })
 
 test('turn end in plan without tasks waits as other', () => {
   const s = must(run(null, [{ type: 'stage-entered', stage: 'plan', at: 1 }, ended(5)]))
   expect(s.waiting?.reason).toBe('other')
-  expect(waitText(s)).toBe('your turn')
+  expect(waitText(s, s.waiting!)).toBe('your turn')
 })
 
 test('turn end in brainstorm distinguishes question and spec approval', () => {
   const q = must(run(null, [{ type: 'stage-entered', stage: 'brainstorm', at: 1 }, ended(2)]))
   expect(q.waiting?.reason).toBe('brainstorm-question')
-  expect(waitText(q)).toBe('question for you')
+  expect(waitText(q, q.waiting!)).toBe('question for you')
   const a = must(run(q, [{ type: 'phase-reported', phase: 'awaiting-approval', at: 3 }, ended(4)]))
   expect(a.waiting).toEqual({ reason: 'spec-approval', since: 4 })
-  expect(waitText(a)).toBe('review the spec')
+  expect(waitText(a, a.waiting!)).toBe('review the spec')
 })
 
 test('turn end with a blocked implementer waits as blocked', () => {
@@ -59,7 +59,7 @@ test('turn end with a blocked implementer waits as blocked', () => {
     ended(30),
   ]))
   expect(s.waiting).toEqual({ reason: 'blocked', task: '2', since: 30 })
-  expect(waitText(s)).toBe('Task 2 blocked')
+  expect(waitText(s, s.waiting!)).toBe('Task 2 blocked')
 })
 
 test('turn end with a tripped breaker waits as breaker', () => {
@@ -69,7 +69,7 @@ test('turn end with a tripped breaker waits as breaker', () => {
   ]))
   const s = reduce({ ...base, tasks: base.tasks.map(t => (t.n === '1' ? { ...t, isBreakerTripped: true } : t)) }, ended(40))
   expect(must(s).waiting).toEqual({ reason: 'breaker', task: '1', since: 40 })
-  expect(waitText(must(s))).toBe('Task 1 · 5 fix rounds used up')
+  expect(waitText(must(s), must(s).waiting!)).toBe('Task 1 · 5 fix rounds used up')
 })
 
 test('turn end in exec otherwise waits as other, final-review as other, done not at all', () => {
@@ -84,7 +84,7 @@ test('turn end in exec otherwise waits as other, final-review as other, done not
 test('turn end in finishing waits on the finishing menu', () => {
   const s = must(run(null, [{ type: 'stage-entered', stage: 'finishing', at: 1 }, ended(2)]))
   expect(s.waiting).toEqual({ reason: 'finishing-menu', since: 2 })
-  expect(waitText(s)).toBe('ready for your test · finishing menu')
+  expect(waitText(s, s.waiting!)).toBe('ready for your test · finishing menu')
 })
 
 test('turn-started clears waiting', () => {
@@ -94,17 +94,13 @@ test('turn-started clears waiting', () => {
   expect(s.waiting).toBeUndefined()
 })
 
-test('a turn that answers the finishing menu without a finishing action ends the run', () => {
+test('a turn that answers the finishing menu without a finishing action leaves the run open', () => {
   const answered = must(run(null, [
     { type: 'stage-entered', stage: 'finishing', at: 1 }, ended(2), { type: 'turn-started', at: 3 },
   ]))
-  const kept = must(reduce(answered, ended(4)))
-  expect(kept).toMatchObject({ stage: 'done', finishedAt: 4 })
-  expect(kept.waiting).toBeUndefined()
-  expect(notificationFor(answered, kept)).toBeUndefined()
-  const later = must(run(kept, [{ type: 'turn-started', at: 5 }, ended(6)]))
-  expect(later).toMatchObject({ stage: 'done', finishedAt: 4 })
-  expect(later.waiting).toBeUndefined()
+  const next = must(reduce(answered, ended(4)))
+  expect(next).toMatchObject({ stage: 'finishing', waiting: { reason: 'other', since: 4 } })
+  expect(next.finishedAt).toBeUndefined()
 })
 
 test('a turn end in finishing before the menu was answered still waits on it', () => {
@@ -138,4 +134,9 @@ test('notificationFor fires once per wait and never for brainstorm questions', (
   expect(notificationFor(null, q)).toBeUndefined()
   const a = must(run(q, [{ type: 'phase-reported', phase: 'awaiting-approval', at: 3 }, ended(4)]))
   expect(notificationFor(q, a)).toBeUndefined()
+})
+
+test('waitText words the wait it is given', () => {
+  const s = must(run(null, [{ type: 'stage-entered', stage: 'exec', mode: 'sdd', at: 10 }]))
+  expect(waitText(s, { reason: 'other', since: 1 })).toBe('your turn')
 })

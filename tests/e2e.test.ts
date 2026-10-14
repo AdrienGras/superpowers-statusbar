@@ -94,3 +94,16 @@ test('checkTrace reports an empty trace', () => {
     warnings: ['run never reached finishing (model behaviour)'],
   })
 })
+
+test('an SDD trace without a spawn-seen dispatch warns', () => {
+  const trace = traceOf(untilFinishingMenu(SDD_RUN))
+  const via = (v: TraceEntry['via']) => trace.map(e => (e.action === 'agent-dispatched' ? { ...e, via: v } : e))
+  const warning = 'no dispatch seen at agent.spawn (tool.call fallback only)'
+  expect(checkTrace(via('tool'), 'sdd', 2).warnings).toEqual([warning])
+  expect(checkTrace(via('spawn'), 'sdd', 2).warnings).toEqual([])
+  const one = via('tool')
+  const i = one.findIndex(e => e.action === 'agent-dispatched')
+  one[i] = { ...one[i]!, via: 'spawn' }
+  expect(checkTrace(one, 'sdd', 2).warnings).toEqual([])
+  expect(checkTrace(via('tool'), 'direct', 2).warnings).not.toContain(warning)
+})

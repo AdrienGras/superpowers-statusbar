@@ -30,7 +30,7 @@ Le mod est en lecture seule : il ne pilote rien.
 
 - Suivre un run complet : brainstorming → plan → exécution (SDD ou exécution directe avec TDD) → revue finale → fin de branche.
 - Afficher la bande, le pane et les notifications décrits plus bas.
-- Reconstruire l'état après un démarrage de session, une compaction ou un rechargement du mod.
+- Reconstruire l'état depuis le transcript uniquement sur une session reprise (`--resume`, `--continue`) ; un run stocké survit au rechargement et à la compaction, comme le décrit la section Reconstruction. *(v0.1.1)*
 - Se tester sur trois niveaux, dont un e2e local relançable à chaque nouvelle version de superpowers.
 
 ## Non-objectifs (v1)
@@ -68,7 +68,7 @@ Phases d'une tâche :
 - **SDD** : `brief` → `implementing` → `review` → `fix r/5` → `re-review r` → `done`.
 - **Exécution directe** (`exec inline`) : `brief` → `RED` → `GREEN` → `refactor` → `verify` (le `task-done`) → `done`.
 
-Avant l'exécution, la même ligne s'adapte : `● brainstorming · conversation`, `● brainstorming · builder check`, `● plan · drafting`, `● plan · 15 tasks`. Après : `● final review`, `● final review · fixes`, puis un état terminé avec un résumé : `✓ done · 15 tasks · 4 fix rounds · 2 set aside · 3h12`.
+Avant l'exécution, la même ligne s'adapte : `● brainstorming · conversation`, `● brainstorming · builder check`, `● plan · drafting`, `● plan · 15 tasks`. *(v0.1.1)* Sous plan, la bande donne le nombre de tâches puis la phase rapportée (`● plan · 12 tasks · self-review`) ; la bande dit `self-review`, le pane garde `plan self-review`. Après : `● final review`, `● final review · fixes`, puis un état terminé avec un résumé : `✓ done · 15 tasks · 4 fix rounds · 2 set aside · 3h12`.
 
 Quand le run attend Adrien, la ligne devient un seul bloc surligné (fond `warning`, texte `inverseText`, espaces compris), avec la raison ; en exécution, le compteur suit hors du bloc si la place le permet :
 
@@ -81,7 +81,7 @@ Raisons attendues : question du brainstorming (`question for you`), validation d
 
 Hors run superpowers, la bande n'affiche rien (le hook rend `next(e)`).
 
-La bande se dimensionne sur `e.props.bodyColumns` : quand la place manque, elle retire d'abord le temps écoulé, puis le titre de la tâche, puis la barre (le compteur reste). En attente, la raison se coupe avec `…` dans le bloc.
+La bande se dimensionne sur `e.props.bodyColumns` : quand la place manque, elle retire d'abord le temps écoulé, puis le titre de la tâche, puis la barre (le compteur reste). En attente, la raison se coupe avec `…` dans le bloc. *(v0.1.1)* Toutes les bandes tiennent dans `bodyColumns` : brainstorming, plan, revue finale et fin de branche retirent d'abord le temps écoulé puis la phase ; en attente, sous la largeur du bloc (` WAITING · `), le bloc entier est coupé à la largeur, sans jamais la dépasser.
 
 ## Le pane latéral
 
@@ -91,13 +91,14 @@ Il raconte le run. Blocs retenus par Adrien, de haut en bas (titres `STAGES`, `T
 2. **Tâches** : une ligne par tâche, mêmes marques et couleurs, titre, durée alignée à droite pour une tâche finie, nombre de fix rounds. Si la liste dépasse la hauteur, la tâche en cours et ses voisines restent visibles (au moins 3 lignes) et le reste se replie en `(+N)`.
 3. **Tâche en cours** : ses phases en liste verticale, une par ligne : `✓` pour les phases passées avec leur verdict (`ok`, `needs fixes`, `open`…), le spinner pour la phase en cours, `○` pour les phases encore attendues (SDD : brief → implementing → review → done, les fix et re-review s'insèrent au fil de l'eau ; exécution directe : brief → RED → GREEN → refactor → verify → done).
 4. **Décisions et points mis de côté** : rulings, minors différés, findings parkés, tirés du ledger. *(Décidé pendant l'implémentation)* : seules les dernières qui tiennent dans la hauteur restante s'affichent (au moins 3), les plus anciennes comptées en `(+N)` au-dessus ; ces lignes entrent dans le budget de hauteur pour que l'estimation reste visible.
-5. **Estimation** : temps moyen par tâche terminée, temps restant, heure de fin probable (`avg 6m/task · ~48m left · ETA 17:40`).
+5. **Estimation** : temps moyen par tâche terminée, temps restant, heure de fin probable (`avg 6m/task · ~48m left · ETA 17:40`). *(v0.1.1)* Pas d'estimation tant qu'aucun plan n'a été lu : sans plan, le nombre de tâches restantes est inconnu, donc le bloc n'est pas affiché.
 
 Quand le run attend Adrien, rien ne tourne dans le pane : les marques « en cours » deviennent un `●` fixe en `warning` *(décidé pendant l'implémentation)*. Le temps écoulé et l'estimation avancent par une minuterie d'une minute tant qu'un run est en cours.
 
 Ouverture *(mon choix)* :
 - la commande `/sp-progress` ouvre et ferme le pane ;
 - il s'ouvre aussi tout seul au démarrage de l'exécution, seulement là où il serait docké à côté du transcript (`e.viewport.isFullscreen` lu par la bande) ; ailleurs il attend la commande.
+- *(v0.1.1)* Le moteur décide du placement : `$.ui.open` répond `isPlaced: false` quand le terminal est trop étroit (144 colonnes pour un pane non demandé, 110 une fois que la personne l'a demandé). Un pane non placé est refermé (`$.ui.close`) et n'est pas compté ouvert : `/sp-progress` répond `Progress pane cannot be shown here.` et le prochain appel retente l'ouverture au lieu de fermer. Si l'ouverture échoue, la commande répond `Progress pane unavailable.`. La bande ne retient `isFullscreen` que sur les surfaces où elle dessine (terminal, desktop).
 
 La maquette de référence est dans `.superpowers/brainstorm/` (fichier `pane.html`), non versionnée ; la description ci-dessus fait foi.
 
@@ -121,13 +122,13 @@ Superpowers 7.0.0 n'écrit en format fixe que la sortie de ses scripts et une pa
 
 | Event | Ce qu'on en tire |
 |---|---|
-| `tool.call` sur l'outil `Skill` *(décidé pendant l'implémentation)* | Entrée dans un skill de la chaîne (`superpowers:brainstorming`, `writing-plans`, `subagent-driven-development`, `executing-plans`, `finishing-a-development-branch`), compté avant l'appel lui-même ; un appel en erreur ne compte pas. C'est la source principale, voir `skill.prompt` ci-dessous. |
-| `skill.prompt` *(décidé pendant l'implémentation)* | Observe seulement : même entrée dans un skill, utile pour un `/slash` tapé. Le plugin de sécurité intégré à Claude Code contourne la réécriture `skill.prompt` des plugins installés au niveau utilisateur, et le mod n'écrit plus rien dans le texte des skills ; là où le hook est contourné, un skill tapé en `/slash` passe inaperçu jusqu'au premier appel d'outil reconnaissable. |
+| `tool.call` sur l'outil `Skill` *(décidé pendant l'implémentation)* | Entrée dans un skill de la chaîne (`superpowers:brainstorming`, `writing-plans`, `subagent-driven-development`, `executing-plans`, `finishing-a-development-branch`), compté avant l'appel lui-même ; un appel en erreur ne compte pas. C'est la source des skills appelés par le modèle ; les skills tapés en `/superpowers:…` viennent de `command.run` *(v0.1.1)*, voir la ligne suivante. Un skill vu dans un subagent (`agentId`) ne crée jamais de run et ne fait jamais reculer l'étape, même depuis `done` ; il la fait avancer, avec son mode, seulement si l'agent n'a pas de rôle reconnu (`implementer`, `reviewer`, `re-reviewer`, `final-reviewer`, `builder-check`) : un agent `other`, `unknown` ou inconnu du run peut le faire, ce qui couvre l'orchestrateur du mode « cheaper orchestration » qui appelle lui-même `subagent-driven-development` puis `finishing-a-development-branch`. Dans un subagent au rôle reconnu, il est ignoré *(v0.1.1)*. |
+| `command.run` / `skill.prompt` *(v0.1.1)* | Un skill tapé en `/superpowers:…` est vu par `command.run` (sauf `sp-progress`), vérifié en live (`claude -p`, trace `via: command`). `skill.prompt` n'est plus observé : le plugin de sécurité intégré à Claude Code le contourne pour les plugins utilisateur et l'événement ne porte pas d'`agentId`, un skill de sous-agent pourrait donc démarrer un nouveau run à tort. Le mod n'écrit toujours rien dans le texte des skills. |
 | `tool.call` (avec `await next(e)` pour lire le résultat) | Scripts Bash et leurs sorties, Write de la spec et du plan, dispatchs Agent (rôle du subagent par sa `description`, à défaut par la première ligne de son prompt), reprises `SendMessage` d'un agent connu. Porte `agentId` : on voit aussi ce qui se passe dans les subagents (mode orchestrateur compris). |
 | `turn.start` / `turn.complete` (boucle principale) | La session rend la main : c'est le signal `WAITING`, la raison venant de l'étape en cours ; sauf si un agent lancé en arrière-plan travaille encore. Le tour suivant efface l'attente. `turn.complete` d'un subagent porte son rapport (statut, verdict). |
 | `session.start` | Déclenche la reconstruction depuis le transcript (voir plus bas). |
 
-`agent.spawn` n'est pas utilisé *(décidé pendant l'implémentation)* : le dispatch `Agent` vu par `tool.call` donne déjà la description, le prompt et l'`agentId`.
+`agent.spawn` *(v0.1.1)* est la source du **départ** de tous les dispatchs, synchrones ou en arrière-plan : le hook appelle `next(e)` pour obtenir l'`agentId`, puis observe un événement `spawn` (description, prompt, `parentAgentId`). Le rôle se déduit comme avant (`roleOf`) et l'agent est en cours dès son départ. Les spawns de workflows (`workflow`) et de teammates (`isTeammate`) sont ignorés. Le `tool.call` `Agent` ne sert plus qu'à rapporter la réponse d'un dispatch synchrone (`status: completed`) et de **repli** quand l'`agentId` n'a pas été vu au spawn (reconstruction sur `--resume`, dont le transcript ne contient pas de spawn, ou spawn que le moteur n'a pas montré) : il dispatche alors comme avant. Un dispatch n'est jamais compté deux fois. Chaque ligne de trace porte `via`, le type d'événement observé qui a produit l'action.
 
 Marqueurs utilisés (superpowers 7.0.0) :
 
@@ -135,31 +136,33 @@ Marqueurs utilisés (superpowers 7.0.0) :
 |---|---|
 | Write vers `docs/superpowers/specs/*-design.md` | spec écrite |
 | Write vers `docs/superpowers/plans/*.md` | plan écrit ; on le parse |
-| Bash `sdd-workspace PLAN` → ligne de sortie finissant par `/.superpowers/sdd/<nom>` | début de l'exécution, emplacement du workspace ; le plan est relu. Un chemin de plan relatif se lit depuis la racine du dépôt où vit le workspace (le chemin du workspace moins `/.superpowers/sdd/<nom>`), pas depuis le dossier de la session, qui diffère dans un worktree *(décidé pendant l'implémentation)* |
+| Bash `sdd-workspace PLAN` → ligne de sortie finissant par `/.superpowers/sdd/<nom>` | début de l'exécution, emplacement du workspace ; le plan est relu. Un chemin de plan relatif se lit depuis la racine du dépôt où vit le workspace (le chemin du workspace moins `/.superpowers/sdd/<nom>`), pas depuis le dossier de la session, qui diffère dans un worktree *(décidé pendant l'implémentation)*. Le plan est le premier argument qui ne commence pas par `-`. Appelé après un run `done`, il ouvre un nouveau run en exécution : `done` compte comme pas de run *(v0.1.1)* |
 | Bash `task-brief PLAN N` → `wrote …/task-N-brief.md: L lines` | SDD : début de la tâche N |
 | Agent `Implement Task N: …` | SDD : écriture |
 | Agent `Review Task N (spec + quality)` | SDD : relecture |
 | SendMessage vers l'implémenteur enregistré, ou Agent sans description de modèle après une relecture | SDD : fix round (1 à 3 en reprise, 4 et 5 en nouvel agent) |
 | Agent `Re-review Task N fix round R` | SDD : re-review du round R |
-| Agent `Review code changes` (ou prompt `You are a Senior Code Reviewer`) en exécution ; à défaut, tout dispatch dont la description contient `review` ou `revue` une fois toutes les tâches terminées, hors corrections (`fix`, `correct`, `corrig`) *(décidé pendant l'implémentation)* | revue finale |
+| Agent `Review code changes` (ou prompt `You are a Senior Code Reviewer`) en exécution ; à défaut, tout dispatch dont la description contient le mot `review` ou `revue` (pas collé à une lettre : `Preview` n'en est pas un) une fois le plan lu et toutes ses tâches terminées, hors corrections (`fix`, `correct`, `corrig`) *(décidé pendant l'implémentation ; v0.1.1 pour le mot entier et le plan lu)* | revue finale |
 | Bash `task-start PLAN N` → `brief:` / `base:` | exécution directe : début de la tâche N |
 | Bash `task-done PLAN N BASE -- cmd` → `ledger: Task N: complete …` ou `NOT recorded` | exécution directe : fin (ou échec) de la tâche N |
 | Résultat d'implémenteur `**Status:** BLOCKED` | attente : implémenteur bloqué |
 | Rapport de relecteur : la ligne `**Task quality:**` fait foi ; un `❌` ne compte que si elle manque *(décidé pendant l'implémentation)* | relecture propre ou à corriger |
-| `rm -rf …/.superpowers/sdd/<slug>` | workspace supprimé, fin de l'exécution |
+| `rm` récursif (`-r`, `-R`, `-rf`, `-fr`, `--recursive`, avec ou sans `--`) d'un seul chemin qui est le workspace du run : chemin complet, chemin relatif contenant `.superpowers/sdd/` dont le workspace est le suffixe, ou `$VAR` / `${VAR}` assignée à ce workspace plus tôt dans la même commande ; sans workspace connu, rien *(v0.1.1)* | workspace supprimé, fin de l'exécution |
 | Skill `finishing-a-development-branch` | fin de branche ; son menu = attente |
 | En fin de branche : Bash `git merge`, `git push`, `gh pr create` ou `git branch -D` | run terminé (fusion, PR ou abandon) |
-| En fin de branche : un tour qui répond au menu se termine sans aucune de ces commandes *(décidé pendant l'implémentation)* | run terminé : branche gardée telle quelle (option 3). Coût accepté : une réponse au menu qui n'est pas un choix termine aussi le run |
+| En fin de branche : un tour qui répond au menu *(décidé pendant l'implémentation, révisé v0.1.1)* | *(v0.1.1)* le run ne se termine que sur merge, push, PR, suppression de branche (`git branch -D`) ou le rapport de garde (`Keeping branch <name>.` / « Je garde la branche… » / « Branche … conservée »). Toute autre réponse (confirmation de `discard`, correction…) laisse le run ouvert, en attente `your turn` (`other`), sans nouvelle notification |
 
 ### 2. L'instrumentation (choix validé par Adrien)
 
 Là où superpowers ne laisse aucune trace (phases du brainstorming, rédaction du plan, cycle TDD), le mod la crée :
 
 - il enregistre un outil `report_phase` (`$.tool.register`, `isDeferred: false` : toujours présent dans la liste d'outils, subagents compris, sans aller-retour ToolSearch), servi par son propre hook `tool.call` qui répond un texte court ;
-- *(décidé pendant l'implémentation)* les consignes de signalement vivent dans la **description de l'outil** : « pendant `brainstorming`, `writing-plans` ou `test-driven-development`, appelle `report_phase` à chaque entrée dans l'une de ces phases ». Le design prévoyait qu'un hook `skill.prompt` ajoute cette section au texte des skills ; le plugin de sécurité intégré à Claude Code contourne ce hook pour les plugins installés au niveau utilisateur, et le mod n'écrit donc plus rien dans les skills (`skill.prompt` observe seulement). Coût : quelques centaines de tokens de description d'outil à chaque requête ;
+- *(décidé pendant l'implémentation)* les consignes de signalement vivent dans la **description de l'outil** : « pendant `brainstorming`, `writing-plans` ou `test-driven-development`, appelle `report_phase` à chaque entrée dans l'une de ces phases ». Le design prévoyait qu'un hook `skill.prompt` ajoute cette section au texte des skills ; le plugin de sécurité intégré à Claude Code contourne ce hook pour les plugins installés au niveau utilisateur, et le mod n'écrit donc plus rien dans les skills (`skill.prompt` n'est plus observé *(v0.1.1)*). Coût : quelques centaines de tokens de description d'outil à chaque requête ;
 - les valeurs sont fixées par le mod : brainstorming (`conversation`, `design-writing`, `builder-check`, `awaiting-approval`), plan (`drafting`, `self-review`), TDD (`red`, `green`, `refactor`). Le dispatch d'un subagent builder check pendant le brainstorming vaut aussi la phase `builder-check`.
 
 La description ne change aucune consigne d'un skill ; elle demande seulement de signaler. Si le modèle oublie un signalement, l'affichage garde la phase précédente ou montre `?` ; il n'invente rien. Constaté en e2e : en exécution directe, le contrôleur signale rarement RED/GREEN lui-même ; les implémenteurs SDD le font.
+- *(v0.1.1)* Exécution directe (#3) : la description de l'outil demande aussi explicitement le signalement quand le modèle exécute lui-même un plan : « This includes executing a plan yourself (superpowers' executing-plans): report red, green and refactor for each task as you go, as an implementer subagent does. » La description reste sous 1500 caractères, et l'ensemble des phases acceptées par le détecteur dérive de la même liste (`ALL_PHASES`, #11).
+- *(v0.1.1)* Routage des phases TDD : un `red`, `green` ou `refactor` signalé par un agent enregistré comme `implementer` va à sa tâche ; par un agent d'un autre rôle reconnu (relecteur, etc.), il est ignoré ; par un agent `other`, `unknown` ou inconnu, ou par la boucle principale, il va à la tâche courante. La tâche courante est la tâche active activée en dernier (`activeAt` : dernier lancement de son implémenteur ou de son script), puis la dernière activité de sa trace. Le jalon « N tasks · M steps » est identifié par son `kind: 'plan-count'` et remplacé à chaque rechargement du plan ; le verdict d'un re-reviewer en retard va à l'événement `re-review` de son round.
 
 ### 3. Le disque
 
@@ -182,7 +185,7 @@ Des workspaces de runs terminés traînent sur le disque (plus de dix sous `/srv
 ## Architecture *(mon choix)*
 
 ```
-events (tool.call, skill.prompt, turn.*, session.start) ──────┐
+events (tool.call, command.run, turn.*, session.start) ──────┐
 disque (plan, progress.md)  ──────────────────────────────────┼─► détecteurs → actions normalisées
                                                                │
                                                                ▼
@@ -214,7 +217,7 @@ disque (plan, progress.md)  ─────────────────�
 2. **Rejeu** : des séquences d'events rejouées dans détecteurs + reducer, avec l'état attendu.
 
    **Fixtures (décidé par Adrien)** : le dépôt est public et les vrais ledgers et transcripts viennent de projets clients. Le dépôt ne contient donc **que des fixtures synthétiques**, écrites à la main en reproduisant les formats réels (y compris les lignes libres en français, les tirets courts et longs, les SHA de longueurs variables). Les vrais ledgers, transcripts et traces e2e restent sur la machine d'Adrien, dans un dossier gitignoré (`fixtures-local/`), et alimentent des tests locaux en plus, sautés quand le dossier est absent.
-3. **E2E local** : une commande (`npm run e2e -- <dossier superpowers> [sdd|direct|all]`) lance `claude -p` avec le mod et la version de superpowers à valider (`--plugin-dir` vers les deux) sur un mini dépôt de fixture contenant une spec et un plan de 3 tâches déjà approuvés, une fois en SDD, une fois en exécution directe. En mode e2e, le mod écrit sa trace d'états dans un fichier (`SP_STATUSBAR_TRACE`). Le test vérifie la séquence : exec puis revue finale, 3 tâches terminées, chacune passée par ses phases (relecture en SDD, vérification en direct), et, si le run a atteint la fin de branche, l'attente sur son menu en dernier. Des avertissements, qui décrivent le chemin choisi par le modèle sans faire échouer le test : pas de RED puis GREEN en direct, fin de branche jamais atteinte. Le brainstorming n'est pas joué (il demande un humain). Le modèle étant non déterministe, on vérifie l'ordre des étapes, pas leur nombre exact. Chaque run e2e fournit une trace de plus au niveau 2, rangée dans `fixtures-local/` (le dépôt de fixture est synthétique, mais la trace reste locale par défaut).
+3. **E2E local** : une commande (`npm run e2e -- <dossier superpowers> [sdd|direct|all]`) lance `claude -p` avec le mod et la version de superpowers à valider (`--plugin-dir` vers les deux) sur un mini dépôt de fixture contenant une spec et un plan de 3 tâches déjà approuvés, une fois en SDD, une fois en exécution directe. En mode e2e, le mod écrit sa trace d'états dans un fichier (`SP_STATUSBAR_TRACE`). Le test vérifie la séquence : exec puis revue finale, 3 tâches terminées, chacune passée par ses phases (relecture en SDD, vérification en direct), et, si le run a atteint la fin de branche, l'attente sur son menu en dernier. Des avertissements, qui décrivent le chemin choisi par le modèle sans faire échouer le test : pas de RED puis GREEN en direct, fin de branche jamais atteinte, et, en SDD, aucun dispatch vu à `agent.spawn` (seulement le repli `tool.call`) *(v0.1.1)*. Le brainstorming n'est pas joué (il demande un humain). Le modèle étant non déterministe, on vérifie l'ordre des étapes, pas leur nombre exact. Chaque run e2e fournit une trace de plus au niveau 2, rangée dans `fixtures-local/` (le dépôt de fixture est synthétique, mais la trace reste locale par défaut).
 
    *Isolation (décidée pendant l'implémentation)* : le run s'isole de la configuration personnelle avec `--setting-sources project,local` (ni hooks, ni plugins installés, ni `CLAUDE.md` utilisateur ; l'authentification reste), et seuls le mod et la version testée sont chargés. Pas de `bypassPermissions` : `acceptEdits` et une liste d'outils limitée (lecture, skills, subagents, l'outil du mod, les scripts de la version testée, `node --test`, `git`, `npm test`, la suppression du workspace du plan). Cette liste **n'est pas une frontière de sécurité** : `npm test` et `node --test` exécutent du code écrit par le modèle, `git` peut agir sur d'autres dépôts et lancer des commandes par alias. Elle guide un modèle coopératif ; le run est à traiter comme non isolé du système (pas de bac à sable), à lancer seulement sur une machine où c'est acceptable.
 4. **Affichage** : bande et pane montés via le kit de test des mods (`claude plugin test`) sur des `RunState` types, sur terminal et desktop (marques, couleurs du thème, spinner, repli fixe).
@@ -226,7 +229,7 @@ disque (plan, progress.md)  ─────────────────�
 - Fix rounds 1 à 3 : reprise par `SendMessage`, pas de nouvel `Agent`.
 - Dispatchs groupés (plusieurs tâches d'un coup) et tâches scindées après un `BLOCKED` : le nombre de tâches peut changer en cours de route.
 - Workspace supprimé en fin de run, ou par `git clean -fdx` ; worktree : le workspace vit dans le worktree, pas forcément dans le dossier de démarrage de la session (d'où la lecture du plan relatif depuis la racine du workspace).
-- Skills lancés à l'intérieur d'un subagent (TDD dans un implémenteur) : visibles via `agentId`, à rattacher à la bonne tâche.
+- Skills lancés à l'intérieur d'un subagent (TDD dans un implémenteur) : visibles via `agentId` ; ils ne déplacent pas le run (règle de la table ci-dessus, *v0.1.1*), et les phases TDD vont à la tâche de l'implémenteur.
 - API des mods en accès anticipé : elle bouge entre les versions de Claude Code.
 
 ## Plus tard

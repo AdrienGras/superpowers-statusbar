@@ -35,7 +35,7 @@ const start = ($: Engine) => $.session.start({ cwd: '/repo', surface: 'terminal'
 /** What a transcript holds of the events: one assistant message per tool call, `skill` events as `Skill` calls. */
 function transcriptOf(events: readonly ObservedEvent[]): TranscriptMessage[] {
   return events.flatMap((e): TranscriptMessage[] => {
-    if (e.kind === 'turn-start' || e.kind === 'turn-end' || e.kind === 'file') return []
+    if (e.kind === 'turn-start' || e.kind === 'turn-end' || e.kind === 'file' || e.kind === 'spawn' || e.kind === 'command') return []
     const { tool, input, ...outcome } = e.kind === 'skill'
       ? { tool: 'Skill', input: { skill: e.skill } }
       : e
@@ -65,6 +65,12 @@ test('messagesToEvents emits a skill event for Skill tool uses', () => {
     { kind: 'tool', tool: 'Skill', input: { skill: 'superpowers:writing-plans' }, result: { success: true }, at: 0 },
   ])
   expect(messagesToEvents([{ role: 'assistant', text: '', toolUses: [{ ...skill, isError: true }] }])).toHaveLength(1)
+})
+
+test('messagesToEvents keeps the agentId of a subagent\'s Skill call', () => {
+  const skill = { tool: 'Skill', input: { skill: 'superpowers:finishing-a-development-branch' }, agentId: 'a1' }
+  expect(messagesToEvents([{ role: 'assistant', text: '', toolUses: [skill] }])[0])
+    .toStrictEqual({ kind: 'skill', skill: 'superpowers:finishing-a-development-branch', agentId: 'a1', at: 0 })
 })
 
 test('rebuild of a transcript without superpowers activity stays null', { plugins: [PEEK] }, async ($, on) => {
@@ -132,10 +138,10 @@ test('no background agent survives a resume: the next main turn end waits', { pl
 
 test('a run already stored is not rebuilt', { plugins: [PEEK] }, async ($, on) => {
   engine(on)
-  on('skill.prompt', (_$, e) => ({ text: e.text }))
+  on('tool.call', () => ({ result: { success: true } }))
   let asked = false
   on('session.messages', () => { asked = true; return { value: [] } })
-  await $.skill.prompt({ skill: 'superpowers:brainstorming', text: 'x' })
+  await $.tool.call({ tool: 'Skill', skill: 'superpowers:brainstorming' })
   await start($)
   expect(asked).toBe(false)
   expect((await runOf($))?.stage).toBe('brainstorm')

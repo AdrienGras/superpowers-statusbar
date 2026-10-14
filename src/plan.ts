@@ -13,7 +13,7 @@ export function parsePlan(text: string): PlanTask[] {
       if (f && f[1]![0] === fence.char && f[1]!.length >= fence.len && line.trim() === f[1]) fence = null
       continue
     }
-    if (f) {
+    if (f && !(f[1]![0] === '`' && line.slice(f[0].length).includes('`'))) {
       fence = { char: f[1]![0]!, len: f[1]!.length }
       continue
     }

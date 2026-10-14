@@ -3,6 +3,7 @@ import type { ElementQuery, Engine, FoundElement, MockClock, Plugin } from 'clau
 import type { On, RenderSurface, RenderViewport } from 'claude-code'
 
 import type { ObservedEvent } from '../types'
+import { canSpin, onSpinnerFault, resetSpinnerFaults } from '../hooks/spin.ts'
 import { PLAN, PLAN_TEXT, SDD_RUN, SDD_RUN_LEDGER, WORKSPACE } from './fixtures/runs.ts'
 
 const PLUGIN = 'superpowers-statusbar'
@@ -43,7 +44,13 @@ const FILES: Record<string, readonly string[]> = {
 function engine(on: On, files: Record<string, readonly string[]> = FILES) {
   const clock = mock.clock(on, { now: 1_000_000 })
   mock.env(on, {})
-  const world = { answer: { result: 'ok' } as { result: unknown; text?: string }, opened: [] as string[], closed: [] as string[] }
+  const world = {
+    answer: { result: 'ok' } as { result: unknown; text?: string },
+    opened: [] as string[],
+    closed: [] as string[],
+    /** What the engine answers a `ui.open`: placed, not placed (`reason`), or a failure. */
+    open: 'placed' as 'placed' | 'narrow' | 'fails',
+  }
   const reads = new Map<string, number>()
   on('fs.read', ($, e) => {
     const path = Object.keys(files).find(p => e.path.endsWith(p))
@@ -54,10 +61,13 @@ function engine(on: On, files: Record<string, readonly string[]> = FILES) {
     return { value: versions[Math.min(n, versions.length - 1)]! }
   })
   on('tool.call', () => world.answer)
-  on('skill.prompt', ($, e) => ({ text: e.text }))
   on('turn.start', ($, e) => ({ turnId: e.turnId }))
   on('turn.complete', ($, e) => ({ text: e.answer }))
-  on('ui.open', ($, e) => { world.opened.push(e.id); return { value: { isPlaced: true } } })
+  on('ui.open', ($, e) => {
+    world.opened.push(e.id)
+    if (world.open === 'fails') return { deny: 'no host' }
+    return { value: world.open === 'placed' ? { isPlaced: true } : { isPlaced: false, reason: 'narrow' } }
+  })
   on('ui.close', ($, e) => { world.closed.push(e.id); return { value: undefined } })
   on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
     const { Text } = $.ui.resolve(e)
@@ -72,7 +82,8 @@ async function replay($: Engine, clock: MockClock, world: ReturnType<typeof engi
     await clock.set(Math.max(clock.now(), e.at))
     switch (e.kind) {
       case 'skill':
-        await $.skill.prompt({ skill: e.skill, text: SKILL_TEXT })
+        world.answer = { result: 'ok' }
+        await $.tool.call({ tool: 'Skill', skill: e.skill } as unknown as ToolCallArgs)
         break
       case 'tool':
         world.answer = { result: e.result ?? 'ok', ...(e.text !== undefined ? { text: e.text } : {}) }
@@ -359,4 +370,63 @@ test('pane holds its active marks still while the run waits', async ($, on) => {
       .toMatchObject([{ children: [{ props: { color: 'warning' }, children: ['●'] }, { props: { color: 'warning' } }] }])
     await ui.unmount()
   }
+})
+
+test('sp-progress does not count a pane that was not placed', async ($, on) => {
+  const { world } = engine(on)
+  world.open = 'narrow'
+  expect((await $.command.run(SP_PROGRESS)).text).toBe('Progress pane cannot be shown here.')
+  expect(world.closed).toEqual(['sp-progress'])
+  expect((await $.command.run(SP_PROGRESS)).text).toBe('Progress pane cannot be shown here.')
+  expect(world.opened).toEqual(['sp-progress', 'sp-progress'])
+})
+
+test('entering exec closes a pane the engine did not place', async ($, on) => {
+  const { clock, world } = engine(on)
+  world.open = 'narrow'
+  const band = await mountBand($, 'terminal', DOCKED)
+  await band.unmount()
+  await replay($, clock, world, MID_TASK_2)
+  expect(world.opened).toEqual(['sp-progress'])
+  expect(world.closed).toEqual(['sp-progress'])
+  world.open = 'placed'
+  expect((await $.command.run(SP_PROGRESS)).text).toBe('Progress pane opened.')
+})
+
+test('sp-progress answers when opening fails', async ($, on) => {
+  const { world } = engine(on)
+  world.open = 'fails'
+  expect((await $.command.run(SP_PROGRESS)).text).toBe('Progress pane unavailable.')
+})
+
+test('the band records the docking surface only on the surfaces it draws on', async ($, on) => {
+  const { clock, world } = engine(on)
+  const terminal = await mountBand($, 'terminal', { columns: 100, rows: 40, isFullscreen: false })
+  await terminal.unmount()
+  const vscode = await mountBand($, 'vscode', DOCKED)
+  await vscode.unmount()
+  await replay($, clock, world, MID_TASK_2)
+  expect(world.opened).toEqual([])
+})
+
+test('a fault outside the spinner module leaves the spinner alone', async () => {
+  // The harness cannot raise `ui.fault` (no `$.ui.fault`), so the hook's rule is tested where it lives.
+  const fault = (module: string) => ({ surface: 'terminal', module }) as const
+  resetSpinnerFaults()
+  try {
+    onSpinnerFault(fault('hooks/other.tsx'))
+    expect(canSpin('terminal')).toBe(true)
+    onSpinnerFault(fault('hooks/spinner.tsx'))
+    expect(canSpin('terminal')).toBe(false)
+  } finally {
+    resetSpinnerFaults()
+  }
+})
+
+test('a survey holding the band still lets it record the docking surface', async ($, on) => {
+  const { clock, world } = engine(on)
+  const survey = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'AbovePrompt', props: { ...bandProps, hasSurvey: true }, viewport: DOCKED })
+  await survey.unmount()
+  await replay($, clock, world, MID_TASK_2)
+  expect(world.opened).toEqual(['sp-progress'])
 })

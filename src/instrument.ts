@@ -22,7 +22,8 @@ const WHEN: Record<ReportedPhase, string> = {
   'refactor': 'you are cleaning up with the tests green',
 }
 
-const ALL_PHASES: readonly ReportedPhase[] = Object.values(PHASES_BY_SKILL).flat()
+/** Every phase the tool accepts; the detector accepts the same set. */
+export const ALL_PHASES: readonly ReportedPhase[] = Object.values(PHASES_BY_SKILL).flat()
 
 const phaseLines = (skill: ReportingSkill) => PHASES_BY_SKILL[skill].map(p => `- \`${p}\`: ${WHEN[p]}`).join('\n')
 
@@ -34,7 +35,8 @@ const DESCRIPTION = [
   'Reports the current superpowers phase to the status bar your human partner watches. Call it only while following '
     + 'superpowers\' brainstorming, writing-plans or test-driven-development skill: once each time you move into one of '
     + 'the phases below, then carry on. It is a signal only: it changes nothing about how you follow the skill, and you '
-    + 'report nothing else.',
+    + 'report nothing else. This includes executing a plan yourself (superpowers\' executing-plans): report red, green '
+    + 'and refactor for each task as you go, as an implementer subagent does.',
   ...(Object.keys(PHASES_BY_SKILL) as ReportingSkill[]).map(skill => `${skill}:\n${phaseLines(skill)}`),
 ].join('\n\n')
 

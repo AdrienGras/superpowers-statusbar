@@ -6,6 +6,14 @@ const REPO = '/repo'
 export const PLAN = 'docs/superpowers/plans/2026-01-01-recettes.md'
 export const SPEC = `${REPO}/docs/superpowers/specs/2026-01-01-recettes-design.md`
 export const WORKSPACE = `${REPO}/.superpowers/sdd/2026-01-01-recettes`
+export const PLAN2 = 'docs/superpowers/plans/2026-02-02-menus.md'
+export const WORKSPACE2 = `${REPO}/.superpowers/sdd/2026-02-02-menus`
+export const PLAN2_TEXT = `# Menus Implementation Plan
+
+### Task 1: Modèle Menu
+
+- [ ] **Step 1: Écrire le test qui échoue**
+`
 const SP = '/home/dev/.claude/plugins/cache/superpowers-marketplace/superpowers/7.0.0/skills'
 const SDD_SCRIPTS = `${SP}/subagent-driven-development/scripts`
 const EXEC_SCRIPTS = `${SP}/executing-plans/scripts`
@@ -48,6 +56,7 @@ Task 1: complete (commits a1b2c3d..e4f5a6b, review clean)
  */
 export const FILES: Record<string, string | readonly string[]> = {
   [`${REPO}/${PLAN}`]: PLAN_TEXT,
+  [`${REPO}/${PLAN2}`]: PLAN2_TEXT,
   [`${WORKSPACE}/progress.md`]: [LEDGER_HEADER, SDD_TASK1_LEDGER, SDD_RUN_LEDGER],
 }
 
@@ -110,6 +119,12 @@ function finish(at: At): ObservedEvent[] {
     bash(at, 'git checkout main && git merge feat/recettes', 'Fast-forward'),
   ]
 }
+
+/** A second plan started once the first run is over. */
+export const SECOND_PLAN_EVENTS: ObservedEvent[] = [
+  { kind: 'tool', tool: 'Bash', input: { command: `bash ${SDD_SCRIPTS}/sdd-workspace ${PLAN2}` },
+    result: { stdout: `${WORKSPACE2}\n`, stderr: '', interrupted: false }, text: `${WORKSPACE2}\n`, at: 9_000_000 },
+]
 
 export const SDD_RUN: ObservedEvent[] = timeline(at => [
   ...designAndPlan(at),

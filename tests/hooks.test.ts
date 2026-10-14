@@ -4,8 +4,8 @@ import type { On } from 'claude-code'
 
 import type { RunState, TraceEntry } from '../types'
 import { REPORT_TOOL } from '../src/instrument.ts'
-import { callEvents, toolEvent } from '../hooks/normalize.ts'
-import { observe } from '../hooks/runtime.ts'
+import { callEvents, spawnEvent, toolEvent } from '../hooks/normalize.ts'
+import { observe, resetTrace } from '../hooks/runtime.ts'
 import { canSpin, resetSpinnerFaults, spinnerFailed } from '../hooks/spin.ts'
 import type { EnginePort } from '../hooks/runtime.ts'
 import { replay } from '../src/detectors/index.ts'
@@ -25,6 +25,17 @@ const PEEK: Plugin = {
   },
 }
 
+/** A plugin that spawns a subagent the way any plugin may, with a description a dispatch would have. */
+const SPAWNER: Plugin = {
+  name: 'spawner',
+  register(on) {
+    on('tool.call', { tool: 'mcp__spawner__go' }, async $ => {
+      await $.agent.spawn({ prompt: 'p', description: 'Implement Task 1: Modèle' })
+      return { result: {} }
+    })
+  },
+}
+
 async function runOf($: Engine): Promise<RunState | null> {
   return (await $.tool.call({ tool: 'mcp__peek__run' })).result as RunState | null
 }
@@ -33,7 +44,6 @@ async function runOf($: Engine): Promise<RunState | null> {
 function engine(on: On, env: Record<string, string> = {}) {
   mock.clock(on, { now: 1_000_000 })
   mock.env(on, env)
-  on('skill.prompt', ($, e) => ({ text: e.text }))
   on('turn.start', ($, e) => ({ turnId: e.turnId }))
   on('turn.complete', ($, e) => ({ text: e.answer }))
   on('session.end', ($, e) => ({ sessionId: e.sessionId }))
@@ -46,7 +56,7 @@ const turnComplete = (answer: string) => ({ answer, durationMs: 1, isAborted: fa
 
 /** Writing-plans, then the plan written, then the main turn ends: the run waits for the execution choice. */
 async function planReady($: Engine) {
-  await $.skill.prompt({ skill: 'superpowers:writing-plans', text: SKILL_TEXT })
+  await $.tool.call({ tool: 'Skill', skill: 'superpowers:writing-plans' })
   await $.tool.call({ tool: 'Write', file_path: `/repo/${PLAN}`, content: PLAN_TEXT })
   await $.turn.complete(turnComplete('Plan écrit.'))
 }
@@ -80,6 +90,12 @@ test('a Skill call that ran also yields its skill event, first', () => {
   ])
   expect(callEvents(e, { deny: 'no' }, 4)).toHaveLength(1)
   expect(callEvents({ tool: 'Bash', tool_use_id: 'u2', command: 'ls' }, { result: 'x' }, 4)).toHaveLength(1)
+})
+
+test('callEvents keeps the agentId of a subagent\'s Skill call', () => {
+  const e = { tool: 'Skill', tool_use_id: 'u1', skill: 'superpowers:finishing-a-development-branch', agentId: 'a1' } as const
+  expect(callEvents(e, { result: { success: true } }, 4)[0])
+    .toEqual({ kind: 'skill', skill: 'superpowers:finishing-a-development-branch', agentId: 'a1', at: 4 })
 })
 
 // --- observe ---
@@ -142,6 +158,32 @@ test('keeping the branch as-is ends the run with no further notification', async
   expect(world.notes).toEqual(['ready for your test · finishing menu'])
 })
 
+const toMenu = async (p: EnginePort) => {
+  const events = [
+    { kind: 'turn-end', answer: 'What would you like to do?', at: 2 },
+    { kind: 'turn-start', at: 3 },
+  ] as const
+  for (const e of events) await observe(p, e, { notifications: true })
+}
+
+test('the discard confirmation keeps the run until the branch is deleted', async () => {
+  const { world, port: p } = port(replay([{ kind: 'skill', skill: 'superpowers:finishing-a-development-branch', at: 1 }]))
+  await toMenu(p)
+  await observe(p, { kind: 'turn-end', answer: "Type 'discard' to confirm.", at: 4 }, { notifications: true })
+  expect(world.stored).toMatchObject({ stage: 'finishing', waiting: { reason: 'other' } })
+  expect(world.notes).toEqual(['ready for your test · finishing menu'])
+  await observe(p, { kind: 'turn-start', at: 5 }, { notifications: true })
+  await observe(p, { kind: 'tool', tool: 'Bash', input: { command: 'git branch -D feat/x' }, at: 6 }, { notifications: true })
+  expect(world.stored?.stage).toBe('done')
+})
+
+test('a reply that is not a choice keeps the run open', async () => {
+  const { world, port: p } = port(replay([{ kind: 'skill', skill: 'superpowers:finishing-a-development-branch', at: 1 }]))
+  await toMenu(p)
+  await observe(p, { kind: 'turn-end', answer: 'Fixed the tests.', at: 4 }, { notifications: true })
+  expect(world.stored).toMatchObject({ stage: 'finishing', waiting: { reason: 'other' } })
+})
+
 // --- hooks ---
 
 test('session.start registers the report tool and the command', async ($, on) => {
@@ -156,31 +198,47 @@ test('session.start registers the report tool and the command', async ($, on) =>
   expect(commands).toEqual([{ name: 'sp-progress', description: 'Open or close the superpowers progress pane' }])
 })
 
-test('skill.prompt observes the skill and leaves its text alone', { plugins: [PEEK] }, async ($, on) => {
+test('skill.prompt no longer changes the run and leaves its text alone', { plugins: [PEEK] }, async ($, on) => {
   engine(on)
+  on('skill.prompt', ($, e) => ({ text: e.text }))
   const r = await $.skill.prompt({ skill: 'superpowers:writing-plans', text: SKILL_TEXT })
   expect(r.text).toBe(SKILL_TEXT)
+  expect(await runOf($)).toBeNull()
+})
+
+test('typing /superpowers:writing-plans enters plan and runs the command', { plugins: [PEEK] }, async ($, on) => {
+  engine(on)
+  on('command.run', () => ({ text: 'core' }))
+  const typed = (command: string) => ({ command, args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 160 } }) as const
+  const r = await $.command.run(typed('superpowers:writing-plans'))
+  expect(r.text).toBe('core')
   expect((await runOf($))?.stage).toBe('plan')
+})
+
+test('/sp-progress still toggles the pane and starts no run', { plugins: [PEEK] }, async ($, on) => {
+  engine(on)
+  on('command.run', () => ({ text: 'core' }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  const r = await $.command.run({ command: 'sp-progress', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 160 } })
+  expect(r.text).not.toBe('core')
+  expect(await runOf($)).toBeNull()
 })
 
 test('report_phase calls are answered by the mod and update the run', { plugins: [PEEK] }, async ($, on) => {
   engine(on)
   const reached: string[] = []
   on('tool.call', ($, e) => { reached.push(e.tool); return { result: 'engine' } })
-  await $.skill.prompt({ skill: 'superpowers:brainstorming', text: SKILL_TEXT })
+  await $.tool.call({ tool: 'Skill', skill: 'superpowers:brainstorming' })
   const r = await $.tool.call({ tool: REPORT, phase: 'awaiting-approval' })
   expect(r).toEqual({ result: 'ok' })
-  expect(reached).toEqual([])
+  expect(reached).toEqual(['Skill'])
   expect((await runOf($))?.stagePhase).toBe('awaiting-approval')
 })
 
-test('a Skill call and its skill.prompt enter the stage once', { plugins: [PEEK] }, async ($, on) => {
+test('a Skill call entering the same stage twice enters it once', { plugins: [PEEK] }, async ($, on) => {
   engine(on)
   on('tool.call', () => ({ result: { success: true } }))
-  const enter = async (skill: string) => {
-    await $.skill.prompt({ skill, text: SKILL_TEXT })
-    await $.tool.call({ tool: 'Skill', skill })
-  }
+  const enter = (skill: string) => $.tool.call({ tool: 'Skill', skill })
   await enter('superpowers:brainstorming')
   const first = await runOf($)
   expect(first?.stage).toBe('brainstorm')
@@ -238,8 +296,7 @@ test('a failing observer never breaks the tool call', { plugins: [PEEK] }, async
   expect(ran).toMatchObject(shell(`${WORKSPACE}\n`))
   expect(ran.isError).toBeUndefined()
   expect(await runOf($)).toBeNull()
-  expect((await $.skill.prompt({ skill: 'superpowers:writing-plans', text: SKILL_TEXT })).text)
-    .toBe(SKILL_TEXT)
+  expect(await $.tool.call({ tool: 'Skill', skill: 'superpowers:writing-plans' })).toMatchObject(shell(`${WORKSPACE}\n`))
 })
 
 test('the trace file gets one JSON line per action when SP_STATUSBAR_TRACE is set', async ($, on) => {
@@ -261,8 +318,199 @@ test('the trace file gets one JSON line per action when SP_STATUSBAR_TRACE is se
 
 test('a /clear forgets the run', { plugins: [PEEK] }, async ($, on) => {
   engine(on)
-  await $.skill.prompt({ skill: 'superpowers:brainstorming', text: SKILL_TEXT })
+  on('tool.call', () => ({ result: { success: true } }))
+  await $.tool.call({ tool: 'Skill', skill: 'superpowers:brainstorming' })
   expect((await runOf($))?.stage).toBe('brainstorm')
   await $.session.end({ reason: 'clear', sessionId: 's1', resume: { id: 's1' } })
   expect(await runOf($)).toBeNull()
+})
+
+// --- agent.spawn ---
+
+const SPAWN = { tool_use_id: 'u1', prompt: 'p', description: 'd', subagentType: 'general-purpose', provider: { plugin: 'engine', tier: 'core' }, fork: false, parentModel: 'm', background: true } as const
+
+test('spawnEvent keeps what a dispatch is and ignores workflow and teammate spawns', () => {
+  expect(spawnEvent({ ...SPAWN, description: 'Implement Task 1: X', parentAgentId: 'p1' }, { model: 'm', agentId: 'a1' }, 9))
+    .toStrictEqual({ kind: 'spawn', agentId: 'a1', description: 'Implement Task 1: X', prompt: 'p', parentAgentId: 'p1', at: 9 })
+  expect(spawnEvent(SPAWN, { model: 'm' }, 9)).toBeUndefined()
+  expect(spawnEvent({ ...SPAWN, isTeammate: true }, { model: 'm', agentId: 'a1' }, 9)).toBeUndefined()
+  expect(spawnEvent({ ...SPAWN, workflow: { runId: 'w' } as never }, { model: 'm', agentId: 'a1' }, 9)).toBeUndefined()
+})
+
+/** An exec run with its plan loaded, the engine answering a spawn with `impl-1` and the `Agent` call with what `agent` says. */
+async function execWithPlan($: Engine, on: On, agent: unknown) {
+  engine(on)
+  on('agent.spawn', () => ({ model: 'm', agentId: 'impl-1' }))
+  on('fs.read', ($, e) => (e.path.endsWith(`/${PLAN}`) ? { value: PLAN_TEXT } : { deny: `ENOENT: ${e.path}` }))
+  on('tool.call', ($, e) => (e.tool === 'Agent' ? { result: agent } : shell(`${WORKSPACE}\n`)))
+  await $.tool.call({ tool: 'Bash', command: `bash ${SCRIPTS}/sdd-workspace ${PLAN}` })
+}
+
+const trailOf = (s: RunState | null, n: string) => s?.tasks.find(t => t.n === n)?.trail.map(p => p.phase)
+
+test('a foreground dispatch is seen when it starts', { plugins: [PEEK] }, async ($, on) => {
+  await execWithPlan($, on, { status: 'completed', agentId: 'impl-1', content: [{ type: 'text', text: '- **Status:** DONE' }] })
+  await $.agent.spawn({ ...SPAWN, description: 'Implement Task 1: Modèle' })
+  const started = await runOf($)
+  expect(trailOf(started, '1')?.at(-1)).toBe('writing')
+  expect(started?.agents['impl-1']).toMatchObject({ role: 'implementer', isRunning: true })
+
+  await $.tool.call({ tool: 'Agent', description: 'Implement Task 1: Modèle', prompt: 'p' })
+  const done = await runOf($)
+  expect(trailOf(done, '1')?.filter(p => p === 'writing')).toHaveLength(1)
+  expect(done?.tasks.find(t => t.n === '1')?.lastStatus).toBe('DONE')
+})
+
+test('a spawn raised by another plugin is not a dispatch', { plugins: [PEEK, SPAWNER] }, async ($, on) => {
+  await execWithPlan($, on, { status: 'async_launched', agentId: 'impl-1' })
+  await $.tool.call({ tool: 'mcp__spawner__go' })
+  const s = await runOf($)
+  expect(s?.agents['impl-1']).toBeUndefined()
+  expect(trailOf(s, '1')?.includes('writing')).toBeFalsy()
+})
+
+test('a background dispatch seen at spawn and at its call counts once', { plugins: [PEEK] }, async ($, on) => {
+  await execWithPlan($, on, { status: 'async_launched', agentId: 'impl-1' })
+  await $.agent.spawn({ ...SPAWN, description: 'Implement Task 1: Modèle' })
+  await $.tool.call({ tool: 'Agent', description: 'Implement Task 1: Modèle', prompt: 'p' })
+  const s = await runOf($)
+  expect(trailOf(s, '1')?.filter(p => p === 'writing')).toHaveLength(1)
+  expect(s?.agents['impl-1']?.isRunning).toBe(true)
+})
+
+test('every trace line says which event produced it', async ($, on) => {
+  engine(on, { SP_STATUSBAR_TRACE: '/tmp/trace.jsonl' })
+  on('tool.call', () => ({ result: { type: 'create' } }))
+  on('ui.notify', () => ({ value: { isSent: true, channel: 'terminal_bell' } }))
+  const writes: { path: string; text: string }[] = []
+  on('fs.write', ($, e) => { writes.push(e); return { value: undefined } })
+  await planReady($)
+  const entries = (writes[writes.length - 1]?.text ?? '').trimEnd().split('\n').map(l => JSON.parse(l) as TraceEntry)
+  expect(entries.map(e => e.via)).toEqual(['skill', 'tool', 'turn-end'])
+})
+
+// --- robustness ---
+
+/** The engine under a rebuild: what `session.start` needs, and `session.messages` answering `messages`. */
+function rebuilding(on: On, messages: () => unknown) {
+  engine(on)
+  on('tool.register', (_$, e) => ({ value: { tool: `mcp__superpowers-statusbar__${e.name}` } }))
+  on('command.register', (_$, e) => ({ value: { command: e.name } }))
+  on('session.start', (_$, e) => ({ cwd: e.cwd }))
+  on('session.messages', async () => ({ value: await messages() as never }))
+}
+const startSession = ($: Engine) => $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+const TRANSCRIPT = [
+  { role: 'assistant', text: '', toolUses: [{ tool: 'Skill', input: { skill: 'superpowers:writing-plans' } }] },
+  { role: 'assistant', text: '', toolUses: [{ tool: 'Write', input: { file_path: `/repo/${PLAN}`, content: PLAN_TEXT } }] },
+]
+
+test('a rebuild is stored whole, once, or not at all', { plugins: [PEEK] }, async ($, on) => {
+  rebuilding(on, () => TRANSCRIPT)
+  // The store fails from its second write on: the replay must not have written event by event.
+  let writes = 0
+  on('state.set', ($, e, next) => (++writes > 1 ? { deny: 'state is down' } : next(e)))
+  await startSession($)
+  expect((await runOf($))?.tasks).toHaveLength(2)
+})
+
+test('a rebuild whose store fails stores nothing', { plugins: [PEEK] }, async ($, on) => {
+  rebuilding(on, () => TRANSCRIPT)
+  on('state.set', () => ({ deny: 'state is down' }))
+  await startSession($)
+  expect(await runOf($)).toBeNull()
+})
+
+test('a run stored while the transcript is read is kept', { plugins: [PEEK] }, async ($, on) => {
+  let live: Promise<unknown> | undefined
+  rebuilding(on, async () => {
+    live = $.tool.call({ tool: 'Skill', skill: 'superpowers:brainstorming' })
+    await live
+    return TRANSCRIPT
+  })
+  on('tool.call', () => ({ result: { success: true } }))
+  await startSession($)
+  expect((await runOf($))?.stage).toBe('brainstorm')
+})
+
+test('a notification that throws synchronously leaves the reads and the trace done', async () => {
+  const { port: p, world } = port(planned())
+  const written: string[] = []
+  const read: string[] = []
+  p.notify = () => { throw new Error('sync') }
+  p.tracePath = async () => '/tmp/t.jsonl'
+  p.writeFile = async (_path, text) => { written.push(text) }
+  p.readFile = async path => { read.push(path); return PLAN_TEXT }
+  try {
+    // The notifying event (a turn end) asks for no file, and none asks for both: the read is fed by the next event, on the same port.
+    await observe(p, { kind: 'turn-end', answer: 'Plan écrit.', at: 5 }, { notifications: true })
+    expect(world.stored?.waiting?.reason).toBe('execution-choice')
+    expect(written).toHaveLength(1)
+    expect(written[0]).toContain('turn-ended')
+    await observe(p, { kind: 'tool', tool: 'Bash', input: { command: `bash ${SCRIPTS}/sdd-workspace ${PLAN}` }, text: `${WORKSPACE}\n`, at: 6 }, { notifications: true })
+    expect(read).toContain(`${WORKSPACE}/progress.md`)
+  } finally {
+    resetTrace()
+  }
+})
+
+test('the trace restarts after /clear', async ($, on) => {
+  resetTrace()
+  engine(on, { SP_STATUSBAR_TRACE: '/tmp/trace.jsonl' })
+  on('tool.call', () => ({ result: { success: true } }))
+  const writes: string[] = []
+  on('fs.write', ($, e) => { writes.push(e.text); return { value: undefined } })
+  await $.tool.call({ tool: 'Skill', skill: 'superpowers:brainstorming' })
+  expect(writes[writes.length - 1]?.trimEnd().split('\n')).toHaveLength(1)
+  await $.session.end({ reason: 'clear', sessionId: 's1', resume: { id: 's1' } })
+  await $.tool.call({ tool: 'Skill', skill: 'superpowers:writing-plans' })
+  const lines = (writes[writes.length - 1] ?? '').trimEnd().split('\n').map(l => JSON.parse(l) as TraceEntry)
+  expect(lines.map(l => l.stage)).toEqual(['plan'])
+})
+
+test('the minute timer restarts after its interval ended', async ($, on) => {
+  // mock.clock answers clock.every itself, so this test owns the clock: a refused period ends the interval, with no callback.
+  let now = 1_000_000
+  on('clock.now', () => ({ value: now }))
+  mock.env(on, {})
+  on('tool.call', () => ({ result: { success: true } }))
+  let asked = 0
+  on('clock.every', () => {
+    asked += 1
+    return asked === 1 ? { deny: 'refused period' } : { value: undefined }
+  })
+  await $.tool.call({ tool: 'Skill', skill: 'superpowers:brainstorming' })
+  expect(asked).toBe(1)
+  now += 4 * 60_000
+  await $.tool.call({ tool: 'Skill', skill: 'superpowers:brainstorming' })
+  expect(asked).toBe(2)
+})
+
+const flush = async () => { for (let i = 0; i < 50; i++) await Promise.resolve() }
+
+test('trace writes that overlap coalesce into one more write holding every line', async () => {
+  resetTrace()
+  try {
+  const { port: p } = port(null)
+  const written: string[] = []
+  let release: () => void = () => {}
+  p.tracePath = async () => '/tmp/t.jsonl'
+  p.writeFile = async (_path, text) => {
+    written.push(text)
+    if (written.length === 1) await new Promise<void>(r => { release = r })
+  }
+  const first = observe(p, { kind: 'skill', skill: 'superpowers:writing-plans', at: 1 }, {})
+  await flush()
+  const others = [
+    observe(p, { kind: 'tool', tool: 'Write', input: { file_path: `/repo/${PLAN}`, content: PLAN_TEXT }, at: 2 }, {}),
+    observe(p, { kind: 'turn-end', answer: 'Plan écrit.', at: 3 }, {}),
+  ]
+  await flush()
+  release()
+  await Promise.all([first, ...others])
+  expect(written).toHaveLength(2)
+  expect(written[1]?.trimEnd().split('\n').length).toBeGreaterThanOrEqual(2)
+  } finally {
+    resetTrace()
+  }
 })

@@ -1,16 +1,26 @@
 import { test, expect } from 'claude-code/testing'
 
 import type { Action, ReportedPhase, RunState } from '../types'
-import { REPORT_TOOL } from '../src/instrument.ts'
+import { ALL_PHASES, REPORT_TOOL } from '../src/instrument.ts'
 import { traceEntry } from '../src/trace.ts'
 import { replay } from '../src/detectors/index.ts'
 import { reduce } from '../src/reduce.ts'
 import { DIRECT_RUN, FILES } from './fixtures/runs.ts'
 
-const ALL_PHASES: readonly ReportedPhase[] = [
-  'conversation', 'design-writing', 'builder-check', 'awaiting-approval',
-  'drafting', 'self-review', 'red', 'green', 'refactor',
-]
+const EVERY_PHASE: Record<ReportedPhase, true> = {
+  'conversation': true, 'design-writing': true, 'builder-check': true, 'awaiting-approval': true,
+  'drafting': true, 'self-review': true, 'red': true, 'green': true, 'refactor': true,
+}
+
+test('ALL_PHASES lists every ReportedPhase', () => {
+  expect([...ALL_PHASES].sort()).toEqual(Object.keys(EVERY_PHASE).sort())
+})
+
+test('REPORT_TOOL description asks an inline executor to report TDD phases', () => {
+  const d = REPORT_TOOL.description
+  expect(d).toContain('This includes executing a plan yourself (superpowers\' executing-plans): report red, green and refactor for each task as you go, as an implementer subagent does.')
+  expect(d.length).toBeLessThan(1500)
+})
 
 test('REPORT_TOOL enum lists every ReportedPhase', () => {
   expect(REPORT_TOOL.name).toBe('report_phase')
