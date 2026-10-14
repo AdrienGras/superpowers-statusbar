@@ -58,7 +58,7 @@ Vérifications de fin : `claude plugin test .`, `npm run typecheck`, `claude plu
 
   > Status bar reporting (superpowers-statusbar plugin): whenever you follow superpowers test-driven-development, including when you execute a plan yourself with superpowers:executing-plans and when you implement a task as a subagent, call the mcp__superpowers-statusbar__report_phase tool each time you move into a TDD phase: red when you start writing a failing test, green when you start writing the code that makes it pass, refactor when you clean up with the tests green. It is a signal only; it changes nothing about how you work.
 - La description de `report_phase` reste en place comme filet. Ses définitions de `red` et `green` s'alignent sur celles du texte de démarrage, pour que les deux ne se contredisent pas *(mon choix)*. Le reste de la description (brainstorming, writing-plans) ne change pas.
-- Une seule source : le texte servi par le hook est généré depuis `src/instrument.ts`, et un test vérifie qu'ils sont identiques *(mon choix)*.
+- Une seule source : le texte servi par le hook est généré depuis `src/instrument.ts`, et une vérification qu'ils sont identiques tourne dans `npm run typecheck` (`node scripts/gen-context.ts --check`) *(mon choix ; décidé pendant l'implémentation : le lanceur de tests du moteur ne peut pas lire de fichiers, donc ce n'est pas un test unitaire)*.
 - Matcher de `SessionStart` : `startup|resume|clear|compact` *(mon choix : la consigne doit survivre à une compaction et à une reprise)*.
 - Pas d'option pour la couper *(mon choix)*. Elle coûte environ 150 tokens (532 caractères) par session et par subagent, ce que le README dit.
 

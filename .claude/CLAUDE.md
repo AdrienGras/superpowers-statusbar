@@ -45,7 +45,7 @@ src/detectors/sp-7.0.0.ts (détecteurs + MARKERS) ─┤
 
 ```bash
 claude plugin test .          # npm test — tous les *.test.ts(x)
-npm run typecheck             # tsc du mod + des scripts
+npm run typecheck             # tsc du mod + des scripts, puis vérifie que hooks/context/*.json est à jour
 claude plugin validate .      # npm run validate
 npm run contract -- ~/.claude/plugins/cache/superpowers-marketplace/superpowers/7.0.0   # marqueurs superpowers (52 OK)
 npm run local                 # parseurs sur données réelles de fixtures-local/ (n'affiche jamais leur contenu)
