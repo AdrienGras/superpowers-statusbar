@@ -80,3 +80,13 @@ claude --plugin-dir /srv/AdrienGras/superpowers-statusbar   # essai live avec re
 - On travaille avec superpowers (brainstorming → writing-plans → subagent-driven-development).
 - Chaque chantier se fait sur une branche dédiée, puis une PR vers `main`. Les tickets se ferment depuis la PR (`Closes #n`).
 - Messages de commit en anglais, au format `type: sujet`.
+
+## Versions, releases et branches
+
+- **Toute PR qui change ce que reçoivent les utilisateurs** (`src/`, `hooks/`, manifest) passe la version dans la même PR, avec la même valeur dans `package.json`, `package-lock.json` et `.claude-plugin/plugin.json` : correctif → patch (`0.1.x`), fonctionnalité → mineure. Une installation se fait par numéro de version : sans changement de numéro, les gens qui ont installé le mod depuis la marketplace risquent de ne pas recevoir la mise à jour. Une PR qui ne touche que docs, tests ou scripts de dev ne change pas la version.
+- **Après le merge** :
+  - tag annoté `vX.Y.Z` sur le commit de merge, poussé ;
+  - release GitHub depuis ce tag (`gh release create`), en anglais : résumé, tickets fermés, lien vers la PR ;
+  - suppression de la branche mergée, en local et sur le remote ;
+  - sur le board (projet 5) : la PR en Done, ses tickets fermés en Done, les tickets de suivi créés en Todo.
+- Historique : `v0.1.0` (PR #1), `v0.1.1` (PR #16), `v0.1.2` (PR #17 et le passage de version).
