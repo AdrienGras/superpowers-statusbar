@@ -1,4 +1,4 @@
-import type { Mode, Stage, TaskPhase, TraceEntry } from '../types'
+import type { Mode, ReportedPhase, Stage, TaskPhase, TraceEntry } from '../types'
 
 const STAGES: readonly Stage[] = ['exec', 'final-review']
 
@@ -50,9 +50,12 @@ export function checkTrace(entries: readonly TraceEntry[], mode: Mode, expectedT
   for (const [task, trail] of done) {
     if (mode === 'sdd' && !inOrder(trail, ['writing', 'review', 'done'])) errors.push(`task ${task}: no writing then review before done`)
     if (mode === 'direct' && !inOrder(trail, ['verify', 'done'])) errors.push(`task ${task}: no verify before done`)
-  }
-  if (mode === 'direct' && ![...trails.values()].some(trail => inOrder(trail, ['red', 'green']))) {
-    warnings.push('no task goes through red then green')
+    if (!inOrder(trail, ['red', 'green'])) errors.push(`task ${task}: no red then green before done`)
+    const reported = (phase: ReportedPhase) => entries.some(e => e.action === 'phase-reported' && e.task === task && e.reported === phase)
+    const missing = (['red', 'green'] as const).filter(p => !reported(p))
+    if (missing.length > 0) {
+      warnings.push(`task ${task}: red/green not reported by the model${missing.length === 1 ? ` (missing ${missing[0]})` : ''}`)
+    }
   }
 
   // A dispatch observed at `agent.spawn` is the normal path in SDD; only the `tool.call` fallback means the engine did not show spawns.

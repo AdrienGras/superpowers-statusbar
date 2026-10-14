@@ -63,7 +63,7 @@ test('traceEntry carries the current task and its last phase', () => {
   const upToGreen = DIRECT_RUN.findLastIndex(e => e.kind === 'tool' && e.input.phase === 'green')
   const s = must(replay(DIRECT_RUN.slice(0, upToGreen + 1), FILES))
   const green: Action = { type: 'phase-reported', phase: 'green', at: 7 }
-  expect(traceEntry(green, s)).toEqual({ at: 7, action: 'phase-reported', stage: 'exec', mode: 'direct', task: '2', phase: 'green' })
+  expect(traceEntry(green, s)).toEqual({ at: 7, action: 'phase-reported', stage: 'exec', mode: 'direct', task: '2', phase: 'green', reported: 'green' })
 
   // An action naming task 1 reports task 1 and its own last phase, even with task 2 current.
   const verified: Action = { type: 'task-verified', task: '1', isOk: true, at: 8 }

@@ -91,6 +91,8 @@ export type Detection = { actions: Action[]; reads: FileRequest[] }
 export type TraceEntry = {
   at: number; action: Action['type']; stage?: Stage; mode?: Mode; task?: string; phase?: TaskPhase; waiting?: WaitReason
   phases?: { task: string; phase: TaskPhase }[]
+  /** The phase the model reported, on a `phase-reported` action. */
+  reported?: ReportedPhase
   /** The kind of observed event that produced the action. */
   via?: ObservedEvent['kind']
 }

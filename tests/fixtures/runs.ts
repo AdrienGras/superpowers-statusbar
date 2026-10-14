@@ -28,10 +28,14 @@ export const PLAN_TEXT = `# Recettes Implementation Plan
 - [ ] **Step 2: Implémenter Recette**
 - [ ] **Step 3: Commit**
 
+Run: \`npm test\`
+
 ### Task 2: Repository de recettes
 
 - [ ] **Step 1: Écrire le test qui échoue**
 - [ ] **Step 2: Implémenter le repository**
+
+Run: \`npm test\`
 `
 
 const LEDGER_HEADER = `# SDD ledger — plan: ${PLAN}
@@ -71,10 +75,11 @@ type At = () => number
 const skill = (at: At, name: string): ObservedEvent => ({ kind: 'skill', skill: `superpowers:${name}`, at: at() })
 const report = (at: At, phase: string, agentId?: string): ObservedEvent =>
   ({ kind: 'tool', tool: 'mcp__superpowers-statusbar__report_phase', input: { phase }, ...(agentId ? { agentId } : {}), at: at() })
-const write = (at: At, path: string, content: string): ObservedEvent =>
-  ({ kind: 'tool', tool: 'Write', input: { file_path: path, content }, at: at() })
-const bash = (at: At, command: string, stdout: string): ObservedEvent =>
-  ({ kind: 'tool', tool: 'Bash', input: { command }, result: { stdout, stderr: '', interrupted: false }, text: stdout, at: at() })
+const write = (at: At, path: string, content: string, agentId?: string): ObservedEvent =>
+  ({ kind: 'tool', tool: 'Write', input: { file_path: path, content }, ...(agentId ? { agentId } : {}), at: at() })
+const bash = (at: At, command: string, stdout: string, agentId?: string): ObservedEvent =>
+  ({ kind: 'tool', tool: 'Bash', input: { command }, result: { stdout, stderr: '', interrupted: false }, text: stdout,
+    ...(agentId ? { agentId } : {}), at: at() })
 const turnEnd = (at: At, answer: string, agentId?: string): ObservedEvent =>
   ({ kind: 'turn-end', answer, ...(agentId ? { agentId } : {}), at: at() })
 const turnStart = (at: At): ObservedEvent => ({ kind: 'turn-start', at: at() })
@@ -134,6 +139,10 @@ export const SDD_RUN: ObservedEvent[] = timeline(at => [
   bash(at, `bash ${SDD_SCRIPTS}/task-brief ${PLAN} 1`, `wrote ${WORKSPACE}/task-1-brief.md: 6 lines\n`),
   implementer(at, 'impl-1', '1', 'Modèle Recette'),
   turnEnd(at, 'Implémenteur de la tâche 1 lancé.'),
+  write(at, `${REPO}/src/recette.ts`, 'export const recette = 1\n', 'impl-1'),
+  report(at, 'red', 'impl-1'),
+  bash(at, 'npm test', '12 passing\n', 'impl-1'),
+  report(at, 'green', 'impl-1'),
   turnEnd(at, '- **Status:** DONE\n- Commits: e4f5a6b feat: recette', 'impl-1'),
   turnStart(at),
   reviewer(at, 'rev-1', '1', 'Approved'),
@@ -142,6 +151,10 @@ export const SDD_RUN: ObservedEvent[] = timeline(at => [
   bash(at, `bash ${SDD_SCRIPTS}/task-brief ${PLAN} 2`, `wrote ${WORKSPACE}/task-2-brief.md: 5 lines\n`),
   implementer(at, 'impl-2', '2', 'Repository de recettes'),
   turnEnd(at, 'Implémenteur de la tâche 2 lancé.'),
+  write(at, `${REPO}/src/repository.ts`, 'export const repository = 1\n', 'impl-2'),
+  report(at, 'red', 'impl-2'),
+  bash(at, 'npm test', '12 passing\n', 'impl-2'),
+  report(at, 'green', 'impl-2'),
   turnEnd(at, '- **Status:** DONE\n- Commits: 9f8e7d6 feat: repository', 'impl-2'),
   turnStart(at),
   reviewer(at, 'rev-2', '2', 'Needs fixes'),
@@ -159,7 +172,9 @@ export const SDD_RUN: ObservedEvent[] = timeline(at => [
 function directTask(at: At, n: string): ObservedEvent[] {
   return [
     bash(at, `${EXEC_SCRIPTS}/task-start ${PLAN} ${n}`, `brief: ${WORKSPACE}/task-${n}-brief.md\nbase: 0123456789abcdef\n`),
+    write(at, `${REPO}/src/task-${n}.ts`, 'export const x = 1\n'),
     report(at, 'red'),
+    bash(at, 'npm test', '12 passing\n'),
     report(at, 'green'),
     report(at, 'refactor'),
     bash(at, `${EXEC_SCRIPTS}/task-done ${PLAN} ${n} 0123456789abcdef -- npm test`,

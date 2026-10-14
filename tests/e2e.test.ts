@@ -41,6 +41,13 @@ const untilFinishingMenu = (run: readonly ObservedEvent[]) =>
 
 const ok = { errors: [], warnings: [] }
 
+/** The trace without the model's own `report_phase` entries, as in a run where it never reports. */
+const unreported = (trace: readonly TraceEntry[]) => trace.filter(e => e.action !== 'phase-reported')
+
+/** The trace with every red and green event of `task` removed from the entries' `phases`. */
+const withoutRedGreen = (trace: readonly TraceEntry[], task: string) => trace.map(e =>
+  e.phases ? { ...e, phases: e.phases.filter(p => !(p.task === task && (p.phase === 'red' || p.phase === 'green'))) } : e)
+
 test('checkTrace accepts a well-ordered SDD trace', () => {
   expect(checkTrace(traceOf(untilFinishingMenu(SDD_RUN)), 'sdd', 2)).toEqual(ok)
 })
@@ -51,14 +58,40 @@ test('checkTrace reports a task that skipped review in sdd', () => {
   expect(checkTrace(trace, 'sdd', 2)).toEqual({ errors: ['task 2: no writing then review before done'], warnings: [] })
 })
 
-test('checkTrace warns when red then green is missing in direct mode', () => {
-  const trace = traceOf(untilFinishingMenu(DIRECT_RUN))
-  expect(checkTrace(trace, 'direct', 2)).toEqual(ok)
+test('a done task without red then green is an error, in both modes', () => {
+  const error = 'task 2: no red then green before done'
+  const direct = withoutRedGreen(traceOf(untilFinishingMenu(DIRECT_RUN)), '2')
+  expect(checkTrace(direct, 'direct', 2).errors).toContain(error)
+  const sdd = withoutRedGreen(traceOf(untilFinishingMenu(SDD_RUN)), '2')
+  expect(checkTrace(sdd, 'sdd', 2).errors).toContain(error)
   const swap = { red: 'green', green: 'red' } as const
-  const greenFirst = trace.map(e => e.phases
+  const greenFirst = traceOf(untilFinishingMenu(DIRECT_RUN)).map(e => e.phases
     ? { ...e, phases: e.phases.map(p => (p.phase === 'red' || p.phase === 'green' ? { ...p, phase: swap[p.phase] } : p)) }
     : e)
-  expect(checkTrace(greenFirst, 'direct', 2)).toEqual({ errors: [], warnings: ['no task goes through red then green'] })
+  expect(checkTrace(greenFirst, 'direct', 2).errors).toContain('task 1: no red then green before done')
+})
+
+test('red and green observed only give a warning naming the task', () => {
+  for (const [run, mode] of [[DIRECT_RUN, 'direct'], [SDD_RUN, 'sdd']] as const) {
+    const trace = unreported(traceOf(untilFinishingMenu(run)))
+    const { errors, warnings } = checkTrace(trace, mode, 2)
+    expect(errors).toEqual([])
+    expect(warnings).toContain('task 1: red/green not reported by the model')
+  }
+})
+
+test('a report of only one phase names what is missing', () => {
+  const trace = traceOf(untilFinishingMenu(DIRECT_RUN)).filter(e => !(e.action === 'phase-reported' && e.reported === 'green'))
+  expect(checkTrace(trace, 'direct', 2).warnings).toEqual([
+    'task 1: red/green not reported by the model (missing green)',
+    'task 2: red/green not reported by the model (missing green)',
+  ])
+})
+
+test('traceEntry records the reported phase', () => {
+  const s = reduce(null, { type: 'stage-entered', stage: 'exec', mode: 'direct', at: 0 })
+  expect(traceEntry({ type: 'phase-reported', phase: 'green', at: 1 }, s, s).reported).toBe('green')
+  expect(traceEntry({ type: 'stage-entered', stage: 'exec', at: 1 }, s, s).reported).toBeUndefined()
 })
 
 test('checkTrace requires the final finishing-menu wait once finishing is reached', () => {
