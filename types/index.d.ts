@@ -8,7 +8,7 @@ export type TaskPhase =
   | 'brief' | 'writing' | 'review' | 'fix' | 're-review'
   | 'red' | 'green' | 'refactor' | 'verify' | 'done' | 'unknown'
 export type ImplementerStatus = 'DONE' | 'DONE_WITH_CONCERNS' | 'BLOCKED' | 'NEEDS_CONTEXT'
-export type PlanTask = { n: string; title: string; steps: number }
+export type PlanTask = { n: string; title: string; steps: number; runs?: string[] }
 export type TaskEvent = { phase: TaskPhase; at: number; round?: number; verdict?: string }
 export type TaskState = PlanTask & {
   status: 'todo' | 'active' | 'done'

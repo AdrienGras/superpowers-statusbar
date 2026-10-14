@@ -54,3 +54,40 @@ test('parsePlan keeps a fence open on a shorter closing fence', () => {
 test('parsePlan does not open a backtick fence whose info string has a backtick', () => {
   expect(parsePlan('```js `x`\n### Task 1: Shown')).toEqual([{ n: '1', title: 'Shown', steps: 0 }])
 })
+
+test('parsePlan lists the run commands of the template steps', () => {
+  const text = [
+    '### Task 1: slugify',
+    '- [ ] **Step 1: Write the failing test**',
+    '- [ ] **Step 2: Run test to verify it fails**',
+    'Run: `bats test/text.bats --filter slugify`',
+    'Expected: FAIL, `slugify: command not found`.',
+    '- [ ] **Step 4: Run test to verify it passes**',
+    'Run: `bats test/text.bats`',
+    'Expected: PASS',
+    '- [ ] **Step 5: Commit**',
+    '```bash',
+    'git commit -m "feat: slugify"',
+    '```',
+  ].join('\n')
+  expect(parsePlan(text)).toEqual([{ n: '1', title: 'slugify', steps: 4, runs: ['bats test/text.bats --filter slugify', 'bats test/text.bats'] }])
+})
+
+test('parsePlan reads French run lines and fenced commands under a run step', () => {
+  const text = [
+    '### Task 2: Recettes',
+    '- [ ] **Step 2: Lancer le test, vérifier l\'échec**',
+    '```bash',
+    '# depuis la racine',
+    'uv run pytest tests/test_recettes.py::test_liste -v',
+    '```',
+    '- [ ] **Step 4: Lancer les tests**',
+    '**Lancer :** `uv run pytest`',
+  ].join('\n')
+  expect(parsePlan(text)[0]!.runs).toEqual(['uv run pytest tests/test_recettes.py::test_liste -v', 'uv run pytest'])
+})
+
+test('parsePlan gives no runs to a task without run steps, and ignores code under other steps', () => {
+  const text = ['### Task 1: Doc', '- [ ] **Step 1: Write the README**', '```bash', 'npm test', '```'].join('\n')
+  expect(parsePlan(text)).toEqual([{ n: '1', title: 'Doc', steps: 1 }])
+})
