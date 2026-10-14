@@ -1,5 +1,6 @@
 // Pure helpers for telling when an agent wrote a work file or ran one of a
-// plan task's declared commands. Deliberately strict: miss rather than be wrong.
+// plan task's declared commands, whatever prefix wraps it (`rtk`, `timeout 90`,
+// `docker compose exec php`…) on either side. Deliberately strict: miss rather than be wrong.
 
 /**
  * A slice of a shell command, two views at the same offsets: `text` with heredoc bodies and comments blanked,
@@ -13,7 +14,15 @@ const HEREDOC = /^<<-?[ \t]*\\?(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1/
 /** `>` or `>>`, with an optional fd digit or `&`, at the start of a word. */
 const REDIRECT = /(?<=^|[\s;|&(])[0-9&]?>>?/g
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/
-const MAX_KEY_WORDS = 3
+const KEY_WORDS = 2
+
+/** Programs that only read or print: a plan run never starts after one of them in a segment. */
+export const READERS: ReadonlySet<string> = new Set([
+  'git', 'cat', 'ls', 'grep', 'find', 'head', 'tail', 'wc', 'echo', 'printf', 'diff', 'jq',
+])
+
+/** Subcommand verbs too generic to start a key: the word before them (the runner) joins it. */
+const VERBS: ReadonlySet<string> = new Set(['run', 'exec'])
 
 /** Both views of `command`: heredoc bodies and `#` comments blanked, quoted and escaped characters masked. */
 function mask(command: string): Piece {
@@ -82,9 +91,16 @@ function cut(p: Piece, sep: RegExp): Piece[] {
 /** The command's pipelines (split on `&&`, `||`, `;` and new lines), each as its `|` segments. */
 const pipelinesOf = (command: string): Piece[][] => cut(mask(command), PIPELINE_SPLIT).map((p) => cut(p, PIPE))
 
-/** A segment's words, unquoted, without the leading `VAR=x` assignments. */
-function words(segment: string): string[] {
-  const all = segment.trim().split(/\s+/).map((w) => w.replace(/^['"]+|['"]+$/g, '')).filter((w) => w !== '')
+/**
+ * A segment's words, split as the shell does on unquoted whitespace (a quoted string is one word), unquoted, without
+ * the leading `VAR=x` assignments.
+ */
+function words(segment: Piece): string[] {
+  const all: string[] = []
+  for (const m of segment.masked.matchAll(/\S+/g)) {
+    const word = segment.text.slice(m.index, m.index + m[0].length).trim().replace(/^['"]+|['"]+$/g, '')
+    if (word !== '') all.push(word)
+  }
   let i = 0
   while (i < all.length && ASSIGNMENT.test(all[i] ?? '')) i++
   return all.slice(i)
@@ -92,7 +108,7 @@ function words(segment: string): string[] {
 
 /** The words of each segment of `command` that runs something, `cd` segments left out. */
 function segmentsOf(command: string): string[][] {
-  return pipelinesOf(command).flat().map((s) => words(s.text)).filter((w) => w.length > 0 && w[0] !== 'cd')
+  return pipelinesOf(command).flat().map(words).filter((w) => w.length > 0 && w[0] !== 'cd')
 }
 
 /** The program a command runs: the first word of its first segment that is not a `cd`. */
@@ -114,44 +130,73 @@ function basename(word: string): string {
 }
 
 /**
- * What identifies a plan run: its program and first positional words, from its first segment that is not a `cd`,
- * up to its first redirection. A key that is the program alone carries the plan command's flags, all required.
+ * What identifies a plan run: the last two positional words of its first segment that is not a `cd`, up to its
+ * first argument path or its first redirection, then the paths right after that one. Leading words are dropped, so
+ * a prefix (`rtk`, `docker compose exec php`) never makes the key alone; a key starting on `run` or `exec` keeps the
+ * runner before it. A key without a path carries the plan command's flags, all required. A line with a program that
+ * only reads (`rtk git status`) has no key.
  */
 interface Key { words: string[]; flags: string[] }
 
 function keyOf(run: string): Key | undefined {
   const segment = segmentsOf(run)[0]
   if (!segment) return undefined
-  const key: Key = { words: [], flags: [] }
+  const collected: string[] = []
+  const flags: string[] = []
+  let pathAt = -1
   for (const raw of segment) {
     if (/[<>]/.test(raw)) break
     if (raw.startsWith('-')) {
-      key.flags.push(raw)
+      if (pathAt < 0) flags.push(raw)
       continue
     }
     const word = dropSelector(raw)
-    key.words.push(word)
-    if (pathLike(word) || key.words.length >= MAX_KEY_WORDS) break
+    if (READERS.has(basename(word))) return undefined
+    if (pathAt >= 0 && !pathLike(word)) break
+    collected.push(word)
+    if (pathAt < 0 && collected.length > 1 && pathLike(word)) pathAt = collected.length - 1
   }
-  return key
+  const end = pathAt < 0 ? collected.length : pathAt + 1
+  let from = Math.max(0, end - KEY_WORDS)
+  if (from > 0 && VERBS.has(collected[from] ?? '')) from--
+  return { words: collected.slice(from), flags: pathAt < 0 ? flags : [] }
 }
 
 const keysOf = (runs: readonly string[]): Key[] => runs.map(keyOf).filter((k): k is Key => k !== undefined)
 
-function segmentMatches(segment: string[], key: Key): boolean {
-  const [program, first] = [segment[0], key.words[0]]
-  if (program === undefined || first === undefined || basename(dropSelector(program)) !== basename(first)) return false
-  if (key.words.length === 1 && !key.flags.every((f) => segment.includes(f))) return false
-  let at = 1
+/**
+ * Whether the key's words after its first follow, in order, from `at` in `segment`, with the key's flags. Between
+ * two key words, only flags and the word right after a flag may sit (`npm --prefix /x test`).
+ */
+function restInOrder(segment: string[], at: number, key: Key): boolean {
+  if (!key.flags.every((f) => segment.includes(f))) return false
   for (const want of key.words.slice(1)) {
     let found = false
     while (at < segment.length && !found) {
-      const have = dropSelector(segment[at++] ?? '')
+      const have = dropSelector(segment[at] ?? '')
       found = have === want || (pathLike(want) && have.endsWith('/' + want))
+      if (!found && !have.startsWith('-') && !segment[at - 1]?.startsWith('-')) return false
+      at++
     }
     if (!found) return false
   }
   return true
+}
+
+/**
+ * A key of two words or more may start at any word of the segment (a prefix wraps the run), but never after a
+ * program that only reads; a one-word key is the segment's program.
+ */
+function segmentMatches(segment: string[], key: Key): boolean {
+  const first = key.words[0]
+  if (first === undefined) return false
+  const starts = key.words.length > 1 ? segment.length : 1
+  for (let start = 0; start < starts; start++) {
+    const word = basename(dropSelector(segment[start] ?? ''))
+    if (word === basename(first) && restInOrder(segment, start + 1, key)) return true
+    if (READERS.has(word)) return false
+  }
+  return false
 }
 
 const runsOne = (segment: string[], keys: readonly Key[]) =>
@@ -183,7 +228,7 @@ function segmentTargets(s: Piece): string[] {
     const target = targetAt(s.text, after)
     if (target) targets.push(target)
   }
-  const w = words(s.text)
+  const w = words(s)
   if (w[0] === 'tee') {
     for (const word of w.slice(1)) {
       if (/[<>]/.test(word)) break
@@ -201,7 +246,7 @@ export function redirectTargets(command: string, runs: readonly string[] = []): 
   const keys = keysOf(runs)
   const targets: string[] = []
   for (const pipeline of pipelinesOf(command)) {
-    if (keys.length > 0 && pipeline.some((s) => runsOne(words(s.text), keys))) continue
+    if (keys.length > 0 && pipeline.some((s) => runsOne(words(s), keys))) continue
     for (const s of pipeline) targets.push(...segmentTargets(s))
   }
   return targets

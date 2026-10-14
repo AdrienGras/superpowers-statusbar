@@ -1,5 +1,5 @@
 import type { PlanTask } from '../types'
-import { programOf } from './tdd.ts'
+import { programOf, READERS } from './tdd.ts'
 
 const HEADING = /^#{1,6}[ \t]+Task[ \t]+([0-9]+[a-z]?)[ \t]*:?[ \t]*(.*)$/
 const STEP = /^- \[[ xX]\] \*\*Step [0-9]+/
@@ -9,7 +9,7 @@ const RUN_LINE = /^\s*(?:\*\*)?(Run|Lancer|Commande|Exécuter)(?:\*\*)?\s*:\s*(?
 const FENCE = /^ {0,3}(`{3,}|~{3,})/
 /** Programs that never run a task's tests: git, reading and searching, and shell syntax met in fenced scripts. */
 const NOT_RUNS: ReadonlySet<string> = new Set([
-  'git', 'cat', 'ls', 'grep', 'find', 'head', 'tail', 'wc', 'echo', 'printf', 'diff', 'test', '[', 'jq',
+  ...READERS, 'test', '[',
   'set', 'export', 'source', '.', 'for', 'while', 'until', 'if', 'then', 'else', 'elif', 'fi', 'do', 'done', 'case', 'esac',
 ])
 

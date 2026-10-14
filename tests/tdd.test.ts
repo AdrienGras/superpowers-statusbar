@@ -128,3 +128,85 @@ test('heredoc bodies and comments are neither runs nor writes', () => {
   expect(matchesPlanRun('ls # then bats test/t.bats', ['bats test/t.bats'])).toBe(false)
   expect(redirectTargets('ls # > notes.txt')).toEqual([])
 })
+
+test('matchesPlanRun finds the plan run behind any prefix', () => {
+  expect(matchesPlanRun('cargo test', ['rtk cargo test'])).toBe(true)
+  expect(matchesPlanRun('rtk cargo test', ['cargo test'])).toBe(true)
+  expect(matchesPlanRun('time npm test', ['npm test'])).toBe(true)
+  expect(matchesPlanRun('env CI=1 npm test', ['npm test'])).toBe(true)
+  expect(matchesPlanRun('dotenv -- pnpm vitest run src/a.test.ts', ['pnpm vitest run src/a.test.ts'])).toBe(true)
+  expect(matchesPlanRun('rtk proxy pnpm vitest run src/a.test.ts', ['pnpm vitest run src/a.test.ts'])).toBe(true)
+  expect(matchesPlanRun('timeout 300 pnpm build', ['pnpm build'])).toBe(true)
+  expect(matchesPlanRun('corepack pnpm test src/a.test.ts', ['rtk corepack pnpm test src/a.test.ts'])).toBe(true)
+  expect(matchesPlanRun('uv run pytest tests/a.py -x', ['rtk uv run pytest tests/a.py'])).toBe(true)
+  expect(matchesPlanRun('python -m pytest tests/a.py', ['uv run pytest tests/a.py'])).toBe(true)
+  expect(matchesPlanRun('docker compose exec -T php vendor/bin/phpunit tests/X', ['docker compose exec php vendor/bin/phpunit tests/X'])).toBe(true)
+  expect(matchesPlanRun('vendor/bin/phpunit tests/X', ['./vendor/bin/phpunit tests/X'])).toBe(true)
+  expect(matchesPlanRun('pytest "tests/a.py"', ['pytest tests/a.py'])).toBe(true)
+})
+
+test('matchesPlanRun never keys on prefixes alone', () => {
+  expect(matchesPlanRun('rtk uv run ruff check', ['rtk uv run pytest tests/a.py'])).toBe(false)
+  expect(matchesPlanRun('uv run pytest tests/b.py', ['rtk uv run pytest tests/a.py'])).toBe(false)
+  expect(matchesPlanRun('pnpm lint', ['rtk corepack pnpm test'])).toBe(false)
+  expect(matchesPlanRun('rtk git status', ['rtk cargo test'])).toBe(false)
+  expect(matchesPlanRun('uv run python x.py', ['uv run pytest'])).toBe(false)
+  expect(matchesPlanRun('docker compose exec php bin/console cache:clear', ['docker compose exec php vendor/bin/phpunit tests/X'])).toBe(false)
+  expect(matchesPlanRun('docker compose exec php vendor/bin/phpunit tests/Y', ['docker compose exec php vendor/bin/phpunit tests/X'])).toBe(false)
+  expect(matchesPlanRun('pytest tests/a.py', ['rtk pytest'])).toBe(false)
+  expect(matchesPlanRun('rtk proxy node scripts/x.js', ['rtk proxy node --test'])).toBe(false)
+  expect(matchesPlanRun('rtk proxy node --test', ['rtk proxy node --test'])).toBe(true)
+})
+
+test('matchesPlanRun never reads a run in quoted text or after a reading program', () => {
+  expect(matchesPlanRun('git commit -m "fix; npm test"', ['npm test'])).toBe(false)
+  expect(matchesPlanRun('bash -c "npm test"', ['npm test'])).toBe(false)
+  expect(matchesPlanRun('grep -rn "pnpm vitest run" docs', ['pnpm vitest run'])).toBe(false)
+  expect(matchesPlanRun('echo npm test', ['npm test'])).toBe(false)
+  expect(matchesPlanRun('rtk git log -- cargo test', ['cargo test'])).toBe(false)
+})
+
+test('a prefixed plan run\'s own output redirect is not a write', () => {
+  expect(redirectTargets('rtk proxy npm test > out.txt', ['npm test'])).toEqual([])
+  expect(redirectTargets('timeout 90 pnpm vitest run src/a.test.ts | tee run.txt', ['pnpm vitest run src/a.test.ts'])).toEqual([])
+})
+
+test('a plan line that only reads stays no run behind a wrapper', () => {
+  expect(matchesPlanRun('git status', ['rtk git status'])).toBe(false)
+  expect(matchesPlanRun('git diff --stat', ['rtk git diff --stat'])).toBe(false)
+  expect(matchesPlanRun('ls -la src', ['rtk ls -la src'])).toBe(false)
+  expect(matchesPlanRun('cat a.txt', ['rtk cat a.txt'])).toBe(false)
+  expect(matchesPlanRun('grep foo', ['timeout 5 grep foo'])).toBe(false)
+  expect(matchesPlanRun('grep foo', ['/usr/bin/grep foo'])).toBe(false)
+})
+
+test('a one-word plan run is still the segment\'s program', () => {
+  expect(matchesPlanRun('uv add --dev pytest', ['pytest'])).toBe(false)
+  expect(matchesPlanRun('pip install pytest', ['pytest'])).toBe(false)
+  expect(matchesPlanRun('npm i -D vitest', ['vitest'])).toBe(false)
+  expect(matchesPlanRun('composer require --dev phpunit/phpunit', ['vendor/bin/phpunit'])).toBe(false)
+  expect(matchesPlanRun('chmod +x scripts/test.sh', ['./scripts/test.sh'])).toBe(false)
+  expect(matchesPlanRun('bash -n scripts/test.sh', ['./scripts/test.sh'])).toBe(false)
+  expect(matchesPlanRun('./scripts/test.sh', ['./scripts/test.sh'])).toBe(true)
+})
+
+test('a plan run naming several files keeps its runner', () => {
+  expect(matchesPlanRun('ruff check tests/a.py tests/b.py', ['pytest tests/a.py tests/b.py'])).toBe(false)
+  expect(matchesPlanRun('black tests/a.py tests/b.py', ['uv run pytest tests/a.py tests/b.py'])).toBe(false)
+  expect(matchesPlanRun('sed -n 1,40p tests/a.py tests/b.py', ['uv run pytest tests/a.py tests/b.py'])).toBe(false)
+  expect(matchesPlanRun('npx prettier --write test/a.test.js test/b.test.js', ['node --test test/a.test.js test/b.test.js'])).toBe(false)
+  expect(matchesPlanRun('npx eslint test/a.test.js test/b.test.js', ['npx vitest run test/a.test.js test/b.test.js'])).toBe(false)
+  expect(matchesPlanRun('uv run pytest tests/a.py tests/b.py -x', ['pytest tests/a.py tests/b.py'])).toBe(true)
+  expect(matchesPlanRun('pnpm exec vitest run test/a.test.js test/b.test.js', ['npx vitest run test/a.test.js test/b.test.js'])).toBe(true)
+})
+
+test('a run key never starts on a bare run or exec, and skips only flags between its words', () => {
+  expect(matchesPlanRun('pnpm run lint src/a.test.ts', ['pnpm vitest run src/a.test.ts'])).toBe(false)
+  expect(matchesPlanRun('npm run lint -- src/a.test.ts', ['npx vitest run src/a.test.ts'])).toBe(false)
+  expect(matchesPlanRun('docker compose run test', ['npm run test'])).toBe(false)
+  expect(matchesPlanRun('uv run pip install pytest', ['uv run pytest'])).toBe(false)
+  expect(matchesPlanRun('npm run build -- --mode test', ['npm test'])).toBe(false)
+  expect(matchesPlanRun('npx vitest run src/a.test.ts', ['pnpm vitest run src/a.test.ts'])).toBe(true)
+  expect(matchesPlanRun('pnpm exec vitest run --reporter=dot src/a.test.ts', ['pnpm vitest run src/a.test.ts'])).toBe(true)
+  expect(matchesPlanRun('pnpm vitest run -t slug src/a.test.ts', ['pnpm vitest run src/a.test.ts'])).toBe(true)
+})
